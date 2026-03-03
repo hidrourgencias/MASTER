@@ -1,0 +1,12 @@
+{
+  "name": "hidrourgencias-rendiciones",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "cd client && npm install && npx vite build && cd ../server && npm install",
+    "start": "cd server && node src/index.js"
+  }
+}
