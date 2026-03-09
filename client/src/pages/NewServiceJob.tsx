@@ -37,7 +37,7 @@ export default function NewServiceJob() {
     inicial: null as unknown as { file: File; preview: string },
     durante: null as unknown as { file: File; preview: string },
     final: null as unknown as { file: File; preview: string }
-  });
+  } as Record<string, { file: File; preview: string }>);
   const [equipment, setEquipment] = useState<{ equipment_id: number; quantity: number }[]>([]);
   const [jobServices, setJobServices] = useState<any[]>([]);
   const [equipmentCatalog, setEquipmentCatalog] = useState<any[]>([]);
@@ -76,7 +76,7 @@ export default function NewServiceJob() {
     e.preventDefault();
     setError('');
 
-    const photoCount = Object.keys(photos).filter(t => (photos[t] as any)?.file).length;
+    const photoCount = Object.keys(photos).filter(t => (photos as any)[t]?.file).length;
     if (photoCount < 1) {
       setError('Se requiere al menos 1 fotografía obligatoria para gestionar el ticket.');
       return;
@@ -100,8 +100,8 @@ export default function NewServiceJob() {
       });
       const photoTypes: string[] = [];
       ['inicial', 'durante', 'final'].forEach(type => {
-        if ((photos[type] as any)?.file) {
-          fd.append('photos', (photos[type] as any).file);
+        if ((photos as any)[type]?.file) {
+          fd.append('photos', (photos as any)[type].file);
           photoTypes.push(type);
         }
       });
@@ -116,7 +116,7 @@ export default function NewServiceJob() {
   }
 
   function sendWhatsAppTicket() {
-    const photoCount = Object.keys(photos).filter(t => (photos[t] as any)?.file).length;
+    const photoCount = Object.keys(photos).filter(t => (photos as any)[t]?.file).length;
     if (photoCount < 1 || !form.client_name || !form.job_service_id) {
       setError('Complete todos los datos y al menos 1 foto antes de enviar por WhatsApp');
       return;
@@ -272,7 +272,7 @@ export default function NewServiceJob() {
                     className="flex items-center gap-1 bg-corporate-light text-white px-3 py-2 rounded-lg text-sm">
                     <Camera size={16} /> Cámara
                   </button>
-                  <input ref={(el) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
+                  <input ref={(el: HTMLInputElement | null) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
                     onChange={e => {
                       if (e.target.files?.[0]) handlePhoto(type, e.target.files[0]);
                       e.target.value = '';

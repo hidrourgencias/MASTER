@@ -24,7 +24,7 @@ export default function EditServiceJob() {
   });
 
   const [existingPhotos, setExistingPhotos] = useState<any[]>([]);
-  const [newPhotos, setNewPhotos] = useState<Record<string, { file: File; preview: string }>>({});
+  const [newPhotos, setNewPhotos] = useState<Record<string, { file: File; preview: string }>>({} as Record<string, { file: File; preview: string }>);
   const [equipment, setEquipment] = useState<{ equipment_id: number; quantity: number }[]>([]);
   const [jobServices, setJobServices] = useState<any[]>([]);
   const [equipmentCatalog, setEquipmentCatalog] = useState<any[]>([]);
@@ -250,7 +250,7 @@ export default function EditServiceJob() {
                   <Camera size={16} /> {type}
                 </button>
               )}
-              <input ref={(el) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
+              <input ref={(el: HTMLInputElement | null) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
                 onChange={e => {
                   if (e.target.files?.[0]) handleAddPhoto(type, e.target.files[0]);
                   e.target.value = '';
