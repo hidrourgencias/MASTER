@@ -17,13 +17,14 @@ export default function EditServiceJob() {
   const cameraRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const [form, setForm] = useState({
-    client_type: 'PARTICULAR', client_name: '', client_rut: '',
+    client_type: 'PARTICULAR', client_name: '', client_rut: '', client_phone: '',
     address_street: '', address_number: '', address_comuna: '',
-    job_service_id: '', date: '', notes: '', is_garantia: false
+    job_service_id: '', payment_type: 'contado', payment_method: '', client_status: 'pendiente_pago', amount: '',
+    date: '', notes: '', is_garantia: false
   });
 
   const [existingPhotos, setExistingPhotos] = useState<any[]>([]);
-  const [newPhotos, setNewPhotos] = useState<Record<string, { file: File; preview: string }>>({});
+  const [newPhotos, setNewPhotos] = useState<Record<string, { file: File; preview: string } | null>>({});
   const [equipment, setEquipment] = useState<{ equipment_id: number; quantity: number }[]>([]);
   const [jobServices, setJobServices] = useState<any[]>([]);
   const [equipmentCatalog, setEquipmentCatalog] = useState<any[]>([]);
@@ -33,20 +34,21 @@ export default function EditServiceJob() {
 
   useEffect(() => {
     api.getJobServices().then(setJobServices).catch(() => {});
-    api.getEquipmentCatalog().then(setEquipmentCatalog).catch(() => {});
+    api.getEquipmentCatalog().then(setEquipmentCatalog).catch(() => setEquipmentCatalog([]));
   }, []);
 
   useEffect(() => {
     const loadJob = (j: any) => {
       setForm({
         client_type: j.client_type || 'PARTICULAR', client_name: j.client_name || '',
-        client_rut: j.client_rut || '', address_street: j.address_street || '',
+        client_rut: j.client_rut || '', client_phone: j.client_phone || '', address_street: j.address_street || '',
         address_number: j.address_number || '', address_comuna: j.address_comuna || '',
-        job_service_id: String(j.job_service_id || ''), date: j.date || '', notes: j.notes || '',
-        is_garantia: !!j.is_garantia
+        job_service_id: String(j.job_service_id || ''), payment_type: j.payment_type || 'contado',
+        payment_method: j.payment_method || '', client_status: j.client_status || 'pendiente_pago', amount: String(j.amount ?? ''),
+        date: j.date || '', notes: j.notes || '', is_garantia: !!j.is_garantia
       });
       setExistingPhotos(j.photos || []);
-      setEquipment((j.equipment || []).map((e: any) => ({ equipment_id: e.equipment_id, quantity: e.quantity || 1 })));
+      setEquipment([]);
     };
     if (job && id) {
       loadJob(job);
@@ -58,7 +60,9 @@ export default function EditServiceJob() {
 
   function handleAddPhoto(type: string, file: File) {
     const reader = new FileReader();
-    reader.onload = (e) => setNewPhotos(prev => ({ ...prev, [type]: { file, preview: e.target?.result as string } }));
+    reader.onload = (e) => {
+      setNewPhotos(prev => ({ ...prev, [type]: e.target?.result ? { file, preview: e.target.result as string } : null }));
+    };
     reader.readAsDataURL(file);
   }
 
@@ -79,8 +83,8 @@ export default function EditServiceJob() {
     e.preventDefault();
     if (!id) return;
     setError('');
-    if (existingPhotos.length + Object.keys(newPhotos).length < 3) {
-      setError('Se requieren al menos 3 fotos: inicial, durante y final');
+    if (existingPhotos.length + Object.keys(newPhotos).length < 1) {
+      setError('Se requiere al menos 1 fotografía del servicio');
       return;
     }
     setSaving(true);
@@ -90,13 +94,14 @@ export default function EditServiceJob() {
         if (k === 'is_garantia') fd.append(k, v ? '1' : '0');
         else fd.append(k, String(v ?? ''));
       });
-      const types: string[] = [];
+      const photoTypes: string[] = [];
       Object.entries(newPhotos).forEach(([type, p]) => {
-        fd.append('photos', p.file);
-        types.push(type);
+        if (p) {
+          fd.append('photos', p.file);
+          photoTypes.push(type);
+        }
       });
-      fd.append('photo_types', types.join(','));
-      fd.append('equipment_json', JSON.stringify(equipment.filter(e => e.equipment_id && e.quantity > 0)));
+      fd.append('photo_types', photoTypes.join(','));
       await api.updateJob(Number(id), fd);
       navigate('/servicios');
     } catch (err: any) {
@@ -137,6 +142,7 @@ export default function EditServiceJob() {
               className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm bg-white focus:ring-2 focus:ring-corporate-light outline-none">
               <option value="PARTICULAR">Particular</option>
               <option value="COMERCIAL">Comercial</option>
+              <option value="EMPRESA">Empresa</option>
               <option value="CLIENTE">Cliente (Boleta/Factura)</option>
             </select>
           </div>
@@ -148,6 +154,11 @@ export default function EditServiceJob() {
           <div>
             <label className="block text-xs font-medium text-text-secondary mb-1">RUT</label>
             <input type="text" value={form.client_rut} onChange={e => setForm(p => ({ ...p, client_rut: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm focus:ring-2 focus:ring-corporate-light outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Fono Contacto / WhatsApp</label>
+            <input type="text" value={form.client_phone} onChange={e => setForm(p => ({ ...p, client_phone: e.target.value }))}
               className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm focus:ring-2 focus:ring-corporate-light outline-none" />
           </div>
         </div>
@@ -184,7 +195,15 @@ export default function EditServiceJob() {
             Servicio por garantía
           </button>
           <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Tipo *</label>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Tipo de pago *</label>
+            <select value={form.payment_type} onChange={e => setForm(p => ({ ...p, payment_type: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm bg-white focus:ring-2 focus:ring-corporate-light outline-none">
+              <option value="contado">Al contado</option>
+              <option value="plazo">A plazo</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Tipo de servicio *</label>
             <select value={form.job_service_id} onChange={e => setForm(p => ({ ...p, job_service_id: e.target.value }))}
               className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm bg-white focus:ring-2 focus:ring-corporate-light outline-none" required>
               <option value="">Seleccionar...</option>
@@ -229,7 +248,7 @@ export default function EditServiceJob() {
                   <Camera size={16} /> {type}
                 </button>
               )}
-              <input ref={el => cameraRefs.current[type] = el} type="file" accept="image/*" capture="environment" className="hidden"
+              <input ref={(el: HTMLInputElement | null) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
                 onChange={e => e.target.files?.[0] && handleAddPhoto(type, e.target.files[0])} />
             </div>
           ))}

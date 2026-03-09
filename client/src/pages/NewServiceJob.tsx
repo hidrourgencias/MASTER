@@ -19,17 +19,24 @@ export default function NewServiceJob() {
     client_type: 'PARTICULAR',
     client_name: '',
     client_rut: '',
+    client_phone: '',
     address_street: '',
     address_number: '',
     address_comuna: '',
     job_service_id: '',
+    payment_type: 'contado',
+    payment_method: '',
+    client_status: 'pendiente_pago',
+    amount: '',
     date: todayISO(),
     notes: '',
     is_garantia: false
   });
 
-  const [photos, setPhotos] = useState<Record<string, { file: File; preview: string }>>({
-    inicial: null as any, durante: null as any, final: null as any
+  const [photos, setPhotos] = useState<Record<string, { file: File; preview: string } | null>>({
+    inicial: null,
+    durante: null,
+    final: null
   });
   const [equipment, setEquipment] = useState<{ equipment_id: number; quantity: number }[]>([]);
   const [jobServices, setJobServices] = useState<any[]>([]);
@@ -39,13 +46,13 @@ export default function NewServiceJob() {
 
   useEffect(() => {
     api.getJobServices().then(setJobServices).catch(() => {});
-    api.getEquipmentCatalog().then(setEquipmentCatalog).catch(() => {});
+    api.getEquipmentCatalog().then(setEquipmentCatalog).catch(() => setEquipmentCatalog([]));
   }, []);
 
   function handlePhoto(type: string, file: File) {
     const reader = new FileReader();
     reader.onload = (e) => {
-      setPhotos(prev => ({ ...prev, [type]: { file, preview: e.target?.result as string } }));
+      setPhotos(prev => ({ ...prev, [type]: e.target?.result ? { file, preview: e.target.result as string } : null }));
     };
     reader.readAsDataURL(file);
   }
@@ -67,9 +74,9 @@ export default function NewServiceJob() {
     e.preventDefault();
     setError('');
 
-    const missing = ['inicial', 'durante', 'final'].filter(t => !photos[t]);
-    if (missing.length > 0) {
-      setError('Se requieren las 3 fotografías obligatorias en orden: Inicial (antes de comenzar), Durante el servicio, Final (antes de retirarse). Sin ellas no se puede gestionar el ticket.');
+    const photoCount = Object.keys(photos).filter(t => photos[t]).length;
+    if (photoCount < 1) {
+      setError('Se requiere al menos 1 fotografía obligatoria para gestionar el ticket.');
       return;
     }
 
@@ -97,7 +104,6 @@ export default function NewServiceJob() {
         }
       });
       fd.append('photo_types', photoTypes.join(','));
-      fd.append('equipment_json', JSON.stringify(equipment.filter(e => e.equipment_id && e.quantity > 0)));
 
       const job = await api.createJob(fd);
       navigate('/servicios');
@@ -108,9 +114,9 @@ export default function NewServiceJob() {
   }
 
   function sendWhatsAppTicket() {
-    const missing = ['inicial', 'durante', 'final'].filter(t => !photos[t]);
-    if (missing.length > 0 || !form.client_name || !form.job_service_id) {
-      setError('Complete todos los datos y las 3 fotos antes de enviar por WhatsApp');
+    const photoCount = Object.keys(photos).filter(t => photos[t]).length;
+    if (photoCount < 1 || !form.client_name || !form.job_service_id) {
+      setError('Complete todos los datos y al menos 1 foto antes de enviar por WhatsApp');
       return;
     }
     const svc = jobServices.find(s => String(s.id) === form.job_service_id);
@@ -154,6 +160,7 @@ export default function NewServiceJob() {
               className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm bg-white focus:ring-2 focus:ring-corporate-light outline-none">
               <option value="PARTICULAR">Particular</option>
               <option value="COMERCIAL">Comercial</option>
+              <option value="EMPRESA">Empresa</option>
               <option value="CLIENTE">Cliente (Boleta/Factura)</option>
             </select>
           </div>
@@ -168,6 +175,12 @@ export default function NewServiceJob() {
             <input type="text" value={form.client_rut} onChange={e => setForm(p => ({ ...p, client_rut: e.target.value }))}
               className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm focus:ring-2 focus:ring-corporate-light outline-none"
               placeholder="XX.XXX.XXX-X" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Fono Contacto / WhatsApp (opcional)</label>
+            <input type="text" value={form.client_phone} onChange={e => setForm(p => ({ ...p, client_phone: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm focus:ring-2 focus:ring-corporate-light outline-none"
+              placeholder="+56 9 1234 5678" />
           </div>
         </div>
 
@@ -210,6 +223,14 @@ export default function NewServiceJob() {
           </button>
           <p className="text-xs text-text-secondary">Se asocia a un trabajo previo. Acuda como seguimiento.</p>
           <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Tipo de pago *</label>
+            <select value={form.payment_type} onChange={e => setForm(p => ({ ...p, payment_type: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm bg-white focus:ring-2 focus:ring-corporate-light outline-none">
+              <option value="contado">Al contado</option>
+              <option value="plazo">A plazo</option>
+            </select>
+          </div>
+          <div>
             <label className="block text-xs font-medium text-text-secondary mb-1">Tipo de servicio *</label>
             <select value={form.job_service_id} onChange={e => setForm(p => ({ ...p, job_service_id: e.target.value }))}
               className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm bg-white focus:ring-2 focus:ring-corporate-light outline-none" required>
@@ -240,7 +261,7 @@ export default function NewServiceJob() {
               {photos[type] ? (
                 <div className="relative inline-block">
                   <img src={photos[type].preview} alt="" className="w-32 h-24 object-cover rounded-lg border" />
-                  <button type="button" onClick={() => setPhotos(p => ({ ...p, [type]: null }))}
+                  <button type="button" onClick={() => setPhotos(p => ({ ...p, [type]: null as any }))}
                     className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded-full"><X size={12} /></button>
                 </div>
               ) : (
@@ -249,7 +270,7 @@ export default function NewServiceJob() {
                     className="flex items-center gap-1 bg-corporate-light text-white px-3 py-2 rounded-lg text-sm">
                     <Camera size={16} /> Cámara
                   </button>
-                  <input ref={el => cameraRefs.current[type] = el} type="file" accept="image/*" capture="environment" className="hidden"
+                  <input ref={(el: HTMLInputElement | null) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
                     onChange={e => e.target.files?.[0] && handlePhoto(type, e.target.files[0])} />
                 </div>
               )}

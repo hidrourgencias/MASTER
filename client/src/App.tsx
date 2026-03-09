@@ -21,6 +21,8 @@ import TechnicianPayments from './pages/TechnicianPayments';
 import PaymentAudit from './pages/PaymentAudit';
 import AdminEquipment from './pages/AdminEquipment';
 import AdminWorkOrders from './pages/AdminWorkOrders';
+import Quotes from './pages/Quotes';
+import QuoteForm from './pages/QuoteForm';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, token } = useAuth();
@@ -32,6 +34,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { isAdmin } = useAuth();
   if (!isAdmin) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+function VentasRoute({ children }: { children: React.ReactNode }) {
+  const { isVentas, isAdmin } = useAuth();
+  if (!isVentas && !isAdmin) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -59,6 +67,12 @@ export default function App() {
         <Route path="admin/servicios" element={<AdminRoute><AdminServices /></AdminRoute>} />
         <Route path="admin/configuracion" element={<AdminRoute><AdminSettings /></AdminRoute>} />
         <Route path="admin/auditoria" element={<AdminRoute><AuditLog /></AdminRoute>} />
+        
+        {/* Rutas de Ventas */}
+        <Route path="cotizaciones" element={<VentasRoute><Quotes /></VentasRoute>} />
+        <Route path="cotizaciones/nueva" element={<VentasRoute><QuoteForm /></VentasRoute>} />
+        <Route path="cotizaciones/editar/:id" element={<VentasRoute><QuoteForm /></VentasRoute>} />
+
         <Route path="perfil" element={<Profile />} />
         <Route path="soporte" element={<Support />} />
       </Route>

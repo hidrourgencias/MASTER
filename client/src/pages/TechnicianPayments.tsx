@@ -228,7 +228,7 @@ export default function TechnicianPayments() {
                                 ) : (
                                   <button onClick={() => handleSetPayment(job.id)} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">Guardar</button>
                                 )}
-                                <button onClick={() => { setEditing(null); setForm({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: 'contado', admin_payment_notes: '' }); }}
+                                <button onClick={() => { setEditing(null); setForm({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: '1_dia', admin_payment_notes: '' }); }}
                                   className="text-xs bg-gray-400 text-white px-2 py-1 rounded">Cancelar</button>
                               </div>
                             </div>

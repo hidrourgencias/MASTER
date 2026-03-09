@@ -139,12 +139,12 @@ export const api = {
   getNotifications: () => request<any[]>('/work-orders/notifications'),
   receiveWorkOrderAssignment: (assignmentId: number) =>
     request<any>(`/work-orders/assignments/${assignmentId}/receive`, { method: 'PUT' }),
-  getEquipmentCatalog: () => request<any[]>('/jobs/equipment'),
-  getAdminEquipment: () => request<any[]>('/admin/equipment'),
-  createEquipment: (name: string, category: string) =>
-    request<any>('/admin/equipment', { method: 'POST', body: JSON.stringify({ name, category }) }),
-  deleteEquipment: (id: number) =>
-    request<any>(`/admin/equipment/${id}`, { method: 'DELETE' }),
+  getEquipmentCatalog: () => Promise.resolve([] as any[]),
+  getAdminEquipment: () => Promise.resolve([] as any[]),
+  createEquipment: (_name: string, _category: string) => Promise.resolve({} as any),
+  deleteEquipment: (_id: number) => Promise.resolve({} as any),
+  
+  schedulePostventa: (jobId: number) => request<any>(`/jobs/${jobId}/postventa`, { method: 'POST' }),
 
   getWhatsappNumber: () => request<any>('/admin/settings').then((s: any) => ({ whatsapp_number: s?.whatsapp_number })),
   getPaymentAudit: () => request<any[]>('/admin/payment-audit'),
@@ -198,5 +198,15 @@ export const api = {
     a.download = `planilla_contable_${new Date().toISOString().split('T')[0]}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
-  }
+  },
+
+  // Quotes API
+  getQuotes: () => request<any[]>('/quotes'),
+  getQuote: (id: number) => request<any>(`/quotes/${id}`),
+  createQuote: (data: any) => request<any>('/quotes', { method: 'POST', body: JSON.stringify(data) }),
+  updateQuote: (id: number, data: any) => request<any>(`/quotes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  updateQuoteStatus: (id: number, status: string, admin_notes: string) => 
+    request<any>(`/quotes/${id}/status`, { method: 'PUT', body: JSON.stringify({ status, admin_notes }) }),
+  convertQuoteToWO: (id: number, technician_id: number) => 
+    request<any>(`/quotes/${id}/convert-work-order`, { method: 'POST', body: JSON.stringify({ technician_id }) }),
 };

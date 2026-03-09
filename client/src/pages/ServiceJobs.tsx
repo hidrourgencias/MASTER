@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Eye, Trash2, Pencil, Camera, Send } from 'lucide-react';
+import { Plus, Search, Eye, Trash2, Pencil, Camera, Send, Calendar } from 'lucide-react';
 import { api, getUploadsUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatDate, clientTypeLabel } from '../utils/format';
@@ -31,6 +31,17 @@ export default function ServiceJobs() {
       setSummary(s);
     } catch { /* ignore */ }
     setLoading(false);
+  }
+
+  async function handleSchedulePostventa(jobId: number) {
+    try {
+      const res = await api.schedulePostventa(jobId);
+      if (res.googleCalendarUrl) {
+        window.open(res.googleCalendarUrl, '_blank');
+      }
+    } catch (e: any) {
+      alert(e.message || 'Error al programar postventa');
+    }
   }
 
   async function handleDelete(id: number) {
@@ -184,6 +195,13 @@ export default function ServiceJobs() {
                 )}
                 <div className="flex flex-col gap-1">
                   <button
+                    onClick={() => handleSchedulePostventa(job.id)}
+                    className="p-1.5 text-text-secondary hover:text-green-600 transition rounded-lg hover:bg-green-50"
+                    title="Agendar Postventa en Google Calendar"
+                  >
+                    <Calendar size={18} />
+                  </button>
+                  <button
                     onClick={() => setPreview(job)}
                     className="p-1.5 text-text-secondary hover:text-corporate-light transition rounded-lg hover:bg-gray-100"
                     title="Ver"
@@ -270,11 +288,6 @@ export default function ServiceJobs() {
                           `• ${m.nombre_material} × ${m.cantidad || 1}`
                         ).join('\n')
                       : '';
-                    const equipBlock = preview.equipment?.length > 0
-                      ? '\n*Equipos utilizados:*\n' + preview.equipment.map((e: any) =>
-                          `• ${e.name || e.equipment_id} × ${e.quantity || 1}`
-                        ).join('\n')
-                      : '';
                     const notesBlock = preview.notes ? `\n*Notas:* ${preview.notes}` : '';
                     const text = [
                       `*INFORME TÉCNICO - Hidrourgencias*`,
@@ -287,7 +300,6 @@ export default function ServiceJobs() {
                       `*Fecha:* ${formatDate(preview.date)}`,
                       `*Dirección:* ${dir}`,
                       materialsBlock,
-                      equipBlock,
                       notesBlock
                     ].filter(Boolean).join('\n');
                     const openWa = (phoneRaw: string | undefined) => {

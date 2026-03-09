@@ -1,23 +1,24 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Receipt, BarChart3, Shield, User, Menu, X, LogOut, Settings, FileText, Phone, Wrench, Briefcase, DollarSign, ClipboardList, Send } from 'lucide-react';
+import { Home, Receipt, BarChart3, Shield, User, Menu, X, LogOut, Settings, FileText, Phone, Wrench, Briefcase, DollarSign, ClipboardList, Send, FileSignature } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-type AppModule = 'gastos' | 'ordenes';
+type AppModule = 'gastos' | 'ordenes' | 'ventas';
 
-function getActiveModule(pathname: string): AppModule {
+function getActiveModule(pathname: string, isVentas: boolean): AppModule {
+  if (pathname.startsWith('/cotizaciones')) return 'ventas';
   if (pathname.startsWith('/gastos') || pathname.startsWith('/reportes')) return 'gastos';
   if (pathname === '/admin' || pathname.startsWith('/admin/servicios') || pathname.startsWith('/admin/configuracion')) return 'gastos';
   return 'ordenes';
 }
 
 export default function Layout() {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, isVentas } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const activeModule = getActiveModule(location.pathname);
+  const activeModule = getActiveModule(location.pathname, isVentas);
 
   const handleLogout = () => {
     logout();
@@ -36,24 +37,38 @@ export default function Layout() {
     ...(isAdmin ? [{ to: '/admin/ordenes-trabajo', icon: Send, label: 'Órdenes' }] : []),
   ];
 
-  const navItems = activeModule === 'gastos' ? gastosNavItems : ordenesNavItems;
+  const ventasNavItems = [
+    { to: '/cotizaciones', icon: FileSignature, label: 'Cotizaciones' },
+  ];
+
+  let navItems = ordenesNavItems;
+  if (activeModule === 'gastos') navItems = gastosNavItems;
+  if (activeModule === 'ventas') navItems = ventasNavItems;
 
   return (
     <div className="min-h-screen bg-bg-main flex flex-col">
       {/* Module Tabs */}
-      <div className="bg-white border-b border-border-light flex">
+      <div className="bg-white border-b border-border-light flex overflow-x-auto no-scrollbar">
         <button
           onClick={() => navigate('/gastos')}
-          className={`flex-1 py-3 text-sm font-semibold transition ${activeModule === 'gastos' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
+          className={`px-4 py-3 whitespace-nowrap text-sm font-semibold transition ${activeModule === 'gastos' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
         >
-          Control de Gastos
+          Gastos
         </button>
         <button
           onClick={() => navigate('/')}
-          className={`flex-1 py-3 text-sm font-semibold transition ${activeModule === 'ordenes' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
+          className={`px-4 py-3 whitespace-nowrap text-sm font-semibold transition ${activeModule === 'ordenes' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
         >
-          Órdenes y Servicios
+          Órdenes
         </button>
+        {isVentas && (
+          <button
+            onClick={() => navigate('/cotizaciones')}
+            className={`px-4 py-3 whitespace-nowrap text-sm font-semibold transition ${activeModule === 'ventas' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
+          >
+            Ventas
+          </button>
+        )}
       </div>
 
       {/* Header */}
@@ -94,6 +109,13 @@ export default function Layout() {
                 <DrawerLink to="/gastos" icon={Receipt} label="Mis Gastos" onClick={() => setDrawerOpen(false)} />
                 <DrawerLink to="/reportes" icon={BarChart3} label="Reportes" onClick={() => setDrawerOpen(false)} />
                 {isAdmin && <DrawerLink to="/admin" icon={Shield} label="Admin Gastos" onClick={() => setDrawerOpen(false)} />}
+
+                {isVentas && (
+                  <>
+                    <p className="px-5 py-2 text-xs font-semibold text-text-secondary uppercase mt-4">Ventas</p>
+                    <DrawerLink to="/cotizaciones" icon={FileSignature} label="Cotizaciones" onClick={() => setDrawerOpen(false)} />
+                  </>
+                )}
 
                 <p className="px-5 py-2 text-xs font-semibold text-text-secondary uppercase mt-4">Órdenes y Servicios</p>
                 <DrawerLink to="/" icon={Home} label="Inicio" onClick={() => setDrawerOpen(false)} />
