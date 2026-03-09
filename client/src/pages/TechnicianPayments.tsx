@@ -70,7 +70,7 @@ export default function TechnicianPayments() {
     }
   }
 
-  async function markPaid(jobId: number, method: string) {
+  async function markPaid(jobId: number) {
     try {
       await api.markJobPaid(jobId);
       load();

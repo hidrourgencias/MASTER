@@ -103,6 +103,8 @@ export const api = {
   updateSettings: (data: any) =>
     request<any>('/admin/settings', { method: 'PUT', body: JSON.stringify(data) }),
   getPaymentMethods: () => request<any[]>('/admin/payment-methods'),
+  createPaymentMethod: (name: string) => request<any>('/admin/payment-methods', { method: 'POST', body: JSON.stringify({ name }) }),
+  deletePaymentMethod: (id: number) => request<any>(`/admin/payment-methods/${id}`, { method: 'DELETE' }),
 
   getJobServices: () => request<any[]>('/jobs/job-services'),
   getJobs: () => request<any[]>('/jobs'),
@@ -136,9 +138,16 @@ export const api = {
     request<any>(`/jobs/admin/job-services/${id}`, { method: 'DELETE' }),
 
   getWorkOrders: () => request<any[]>('/work-orders'),
+  createWorkOrder: (data: any) => request<any>('/work-orders', { method: 'POST', body: JSON.stringify(data) }),
+  sendWorkOrder: (id: number) => request<any>(`/work-orders/${id}/send`, { method: 'POST' }),
+  getWorkOrderServiceTypes: () => request<any[]>('/work-orders/service-types'),
+  createWorkOrderServiceType: (name: string) => request<any>('/work-orders/service-types', { method: 'POST', body: JSON.stringify({ name }) }),
+  getWorkOrderAttentionTypes: () => request<any[]>('/work-orders/attention-types'),
   getNotifications: () => request<any[]>('/work-orders/notifications'),
   receiveWorkOrderAssignment: (assignmentId: number) =>
     request<any>(`/work-orders/assignments/${assignmentId}/receive`, { method: 'PUT' }),
+  escalateWorkOrderAssignment: (assignmentId: number) =>
+    request<any>(`/work-orders/assignments/${assignmentId}/escalate`, { method: 'PUT' }),
   getEquipmentCatalog: () => Promise.resolve([] as any[]),
   getAdminEquipment: () => Promise.resolve([] as any[]),
   createEquipment: (_name: string, _category: string) => Promise.resolve({} as any),

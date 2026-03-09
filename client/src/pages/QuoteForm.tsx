@@ -27,7 +27,7 @@ export default function QuoteForm() {
       loadQuote();
     } else {
       // Default terms
-      setQuote(prev => ({
+      setQuote((prev: any) => ({
         ...prev, 
         terms_conditions: '1. Validez de la cotización: 15 días.\n2. Condiciones de pago: 50% anticipo, 50% contra entrega.\n3. Garantía de servicio: 3 meses.'
       }));
@@ -41,7 +41,7 @@ export default function QuoteForm() {
   useEffect(() => {
     const subtotal = quote.services_details.reduce((acc: number, item: any) => acc + (Number(item.quantity) * Number(item.unit_price)), 0);
     const iva = Math.round(subtotal * 0.19);
-    setQuote(prev => ({ ...prev, subtotal, iva, total: subtotal + iva }));
+    setQuote((prev: any) => ({ ...prev, subtotal, iva, total: subtotal + iva }));
   }, [quote.services_details]);
 
   const loadQuote = async () => {
@@ -107,7 +107,7 @@ export default function QuoteForm() {
   };
 
   const addServiceItem = () => {
-    setQuote(prev => ({
+    setQuote((prev: any) => ({
       ...prev,
       services_details: [...prev.services_details, { description: '', quantity: 1, unit_price: 0 }]
     }));
@@ -116,18 +116,18 @@ export default function QuoteForm() {
   const updateServiceItem = (index: number, field: string, value: any) => {
     const newItems = [...quote.services_details];
     newItems[index] = { ...newItems[index], [field]: value };
-    setQuote(prev => ({ ...prev, services_details: newItems }));
+    setQuote((prev: any) => ({ ...prev, services_details: newItems }));
   };
 
   const removeServiceItem = (index: number) => {
     const newItems = [...quote.services_details];
     newItems.splice(index, 1);
-    setQuote(prev => ({ ...prev, services_details: newItems }));
+    setQuote((prev: any) => ({ ...prev, services_details: newItems }));
   };
 
   if (loading) return <div className="p-8 text-center">Cargando...</div>;
 
-  const isReadOnly = id && !isAdmin && quote.status === 'aprobada';
+  const isReadOnly = !!(id && !isAdmin && quote.status === 'aprobada');
 
   return (
     <div className="p-4 max-w-4xl mx-auto space-y-4 pb-24">
