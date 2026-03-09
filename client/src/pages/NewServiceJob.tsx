@@ -33,10 +33,10 @@ export default function NewServiceJob() {
     is_garantia: false
   });
 
-  const [photos, setPhotos] = useState<Record<string, { file: File; preview: string } | null>>({
-    inicial: null,
-    durante: null,
-    final: null
+  const [photos, setPhotos] = useState<Record<string, { file: File; preview: string }>>({
+    inicial: null as unknown as { file: File; preview: string },
+    durante: null as unknown as { file: File; preview: string },
+    final: null as unknown as { file: File; preview: string }
   });
   const [equipment, setEquipment] = useState<{ equipment_id: number; quantity: number }[]>([]);
   const [jobServices, setJobServices] = useState<any[]>([]);
@@ -52,7 +52,9 @@ export default function NewServiceJob() {
   function handlePhoto(type: string, file: File) {
     const reader = new FileReader();
     reader.onload = (e) => {
-      setPhotos(prev => ({ ...prev, [type]: e.target?.result ? { file, preview: e.target.result as string } : null }));
+      if (e.target?.result) {
+        setPhotos(prev => ({ ...prev, [type]: { file, preview: e.target!.result as string } }));
+      }
     };
     reader.readAsDataURL(file);
   }
@@ -74,7 +76,7 @@ export default function NewServiceJob() {
     e.preventDefault();
     setError('');
 
-    const photoCount = Object.keys(photos).filter(t => photos[t]).length;
+    const photoCount = Object.keys(photos).filter(t => (photos[t] as any)?.file).length;
     if (photoCount < 1) {
       setError('Se requiere al menos 1 fotografía obligatoria para gestionar el ticket.');
       return;
@@ -98,8 +100,8 @@ export default function NewServiceJob() {
       });
       const photoTypes: string[] = [];
       ['inicial', 'durante', 'final'].forEach(type => {
-        if (photos[type]) {
-          fd.append('photos', photos[type].file);
+        if ((photos[type] as any)?.file) {
+          fd.append('photos', (photos[type] as any).file);
           photoTypes.push(type);
         }
       });
@@ -114,7 +116,7 @@ export default function NewServiceJob() {
   }
 
   function sendWhatsAppTicket() {
-    const photoCount = Object.keys(photos).filter(t => photos[t]).length;
+    const photoCount = Object.keys(photos).filter(t => (photos[t] as any)?.file).length;
     if (photoCount < 1 || !form.client_name || !form.job_service_id) {
       setError('Complete todos los datos y al menos 1 foto antes de enviar por WhatsApp');
       return;
@@ -261,7 +263,7 @@ export default function NewServiceJob() {
               {photos[type] ? (
                 <div className="relative inline-block">
                   <img src={photos[type].preview} alt="" className="w-32 h-24 object-cover rounded-lg border" />
-                  <button type="button" onClick={() => setPhotos(p => ({ ...p, [type]: null as any }))}
+                  <button type="button" onClick={() => setPhotos(p => ({ ...p, [type]: null as unknown as { file: File; preview: string } }))}
                     className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded-full"><X size={12} /></button>
                 </div>
               ) : (
@@ -270,8 +272,11 @@ export default function NewServiceJob() {
                     className="flex items-center gap-1 bg-corporate-light text-white px-3 py-2 rounded-lg text-sm">
                     <Camera size={16} /> Cámara
                   </button>
-                  <input ref={(el: HTMLInputElement | null) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
-                    onChange={e => e.target.files?.[0] && handlePhoto(type, e.target.files[0])} />
+                  <input ref={(el) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
+                    onChange={e => {
+                      if (e.target.files?.[0]) handlePhoto(type, e.target.files[0]);
+                      e.target.value = '';
+                    }} />
                 </div>
               )}
             </div>

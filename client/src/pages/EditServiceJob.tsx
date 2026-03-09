@@ -24,7 +24,7 @@ export default function EditServiceJob() {
   });
 
   const [existingPhotos, setExistingPhotos] = useState<any[]>([]);
-  const [newPhotos, setNewPhotos] = useState<Record<string, { file: File; preview: string } | null>>({});
+  const [newPhotos, setNewPhotos] = useState<Record<string, { file: File; preview: string }>>({});
   const [equipment, setEquipment] = useState<{ equipment_id: number; quantity: number }[]>([]);
   const [jobServices, setJobServices] = useState<any[]>([]);
   const [equipmentCatalog, setEquipmentCatalog] = useState<any[]>([]);
@@ -61,7 +61,9 @@ export default function EditServiceJob() {
   function handleAddPhoto(type: string, file: File) {
     const reader = new FileReader();
     reader.onload = (e) => {
-      setNewPhotos(prev => ({ ...prev, [type]: e.target?.result ? { file, preview: e.target.result as string } : null }));
+      if (e.target?.result) {
+        setNewPhotos(prev => ({ ...prev, [type]: { file, preview: e.target!.result as string } }));
+      }
     };
     reader.readAsDataURL(file);
   }
@@ -96,8 +98,8 @@ export default function EditServiceJob() {
       });
       const photoTypes: string[] = [];
       Object.entries(newPhotos).forEach(([type, p]) => {
-        if (p) {
-          fd.append('photos', p.file);
+        if ((p as any)?.file) {
+          fd.append('photos', (p as any).file);
           photoTypes.push(type);
         }
       });
@@ -248,8 +250,11 @@ export default function EditServiceJob() {
                   <Camera size={16} /> {type}
                 </button>
               )}
-              <input ref={(el: HTMLInputElement | null) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
-                onChange={e => e.target.files?.[0] && handleAddPhoto(type, e.target.files[0])} />
+              <input ref={(el) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
+                onChange={e => {
+                  if (e.target.files?.[0]) handleAddPhoto(type, e.target.files[0]);
+                  e.target.value = '';
+                }} />
             </div>
           ))}
         </div>
