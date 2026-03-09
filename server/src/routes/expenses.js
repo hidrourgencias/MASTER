@@ -169,7 +169,7 @@ router.put('/:id/approve', authMiddleware, adminMiddleware, async (req, res) => 
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!['aprobado', 'rechazado'].includes(status)) {
+    if (!['aprobado', 'rechazado', 'inconcluso'].includes(status)) {
       return res.status(400).json({ error: 'Estado inválido' });
     }
 

@@ -17,6 +17,8 @@ export default function Admin() {
   const [exportTo, setExportTo] = useState(todayISO());
   const [exportUser, setExportUser] = useState('');
   const [exportStatus, setExportStatus] = useState('');
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [editWhatsApp, setEditWhatsApp] = useState('');
 
   useEffect(() => {
     if (isAdmin) loadData();
@@ -43,6 +45,16 @@ export default function Admin() {
       const updated = await api.payExpense(id);
       setExpenses(prev => prev.map(e => e.id === id ? { ...e, ...updated } : e));
     } catch { /* ignore */ }
+  }
+
+  async function handleUpdateUser(id: number, data: any) {
+    try {
+      await api.updateUser(id, data);
+      setEditingUser(null);
+      loadData();
+    } catch (e: any) {
+      alert(e.message || 'Error');
+    }
   }
 
   async function handleResetPassword(id: number, name: string) {
@@ -151,14 +163,18 @@ export default function Admin() {
                     </button>
                   )}
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button onClick={() => handleApprove(exp.id, 'aprobado')}
-                      className="flex-1 flex items-center justify-center gap-1 bg-success text-white py-2 rounded-xl text-sm font-semibold hover:bg-green-600 transition">
+                      className="flex-1 min-w-[100px] flex items-center justify-center gap-1 bg-success text-white py-2 rounded-xl text-sm font-semibold hover:bg-green-600 transition">
                       <CheckCircle size={16} /> Aprobar
                     </button>
                     <button onClick={() => handleApprove(exp.id, 'rechazado')}
-                      className="flex-1 flex items-center justify-center gap-1 bg-danger text-white py-2 rounded-xl text-sm font-semibold hover:bg-red-600 transition">
+                      className="flex-1 min-w-[100px] flex items-center justify-center gap-1 bg-danger text-white py-2 rounded-xl text-sm font-semibold hover:bg-red-600 transition">
                       <XCircle size={16} /> Rechazar
+                    </button>
+                    <button onClick={() => handleApprove(exp.id, 'inconcluso')}
+                      className="flex-1 min-w-[100px] flex items-center justify-center gap-1 bg-amber-500 text-white py-2 rounded-xl text-sm font-semibold hover:bg-amber-600 transition">
+                      <XCircle size={16} /> Inconcluso / Falta más antecedentes
                     </button>
                     {exp.status === 'aprobado' && !exp.paid && (
                       <button onClick={() => handlePay(exp.id)}
@@ -202,8 +218,13 @@ export default function Admin() {
                   <p className="font-semibold text-sm">{u.display_name}</p>
                   <p className="text-xs text-text-secondary">@{u.username} · {u.active ? 'Activo' : 'Inactivo'}</p>
                   {u.rut && <p className="text-xs text-text-secondary">RUT: {u.rut}</p>}
+                  {u.whatsapp_phone && <p className="text-xs text-green-600">WhatsApp: {u.whatsapp_phone}</p>}
                 </div>
                 <div className="flex gap-2">
+                  <button onClick={() => { setEditingUser(u); setEditWhatsApp(u.whatsapp_phone || ''); }}
+                    className="flex items-center gap-1 text-xs bg-blue-100 text-blue-800 px-3 py-1.5 rounded-lg hover:bg-blue-200 transition">
+                    WhatsApp
+                  </button>
                   <button onClick={() => handleResetPassword(u.id, u.display_name)}
                     className="flex items-center gap-1 text-xs bg-yellow-100 text-yellow-800 px-3 py-1.5 rounded-lg hover:bg-yellow-200 transition">
                     <RotateCcw size={12} /> Reset
@@ -213,6 +234,22 @@ export default function Admin() {
             </div>
           ))}
         </motion.div>
+      )}
+
+      {editingUser && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+            <h3 className="font-bold text-lg mb-3">WhatsApp - {editingUser.display_name}</h3>
+            <input value={editWhatsApp} onChange={e => setEditWhatsApp(e.target.value)}
+              placeholder="+56 9 1234 5678"
+              className="w-full px-3 py-2.5 rounded-xl border text-sm mb-4" />
+            <div className="flex gap-2">
+              <button onClick={() => handleUpdateUser(editingUser.id, { whatsapp_phone: editWhatsApp })}
+                className="flex-1 py-2.5 bg-corporate-blue text-white rounded-xl font-medium">Guardar</button>
+              <button onClick={() => setEditingUser(null)} className="px-4 py-2.5 border rounded-xl">Cancelar</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Export Tab */}
@@ -248,6 +285,7 @@ export default function Admin() {
               <option value="pendiente">Pendiente</option>
               <option value="aprobado">Aprobado</option>
               <option value="rechazado">Rechazado</option>
+              <option value="inconcluso">Inconcluso</option>
             </select>
           </div>
           <button onClick={handleExport}

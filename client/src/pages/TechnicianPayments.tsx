@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { DollarSign, Check, Camera, ChevronDown, ChevronUp } from 'lucide-react';
+import { DollarSign, Check, Camera, ChevronDown, ChevronUp, Download, FileText } from 'lucide-react';
 import { api, getUploadsUrl } from '../services/api';
-import { formatCurrency, formatDate } from '../utils/format';
+import { formatCurrency, formatDate, clientTypeLabel } from '../utils/format';
 
 function jobPhotoUrl(path: string) {
   if (!path) return '';
@@ -14,12 +15,16 @@ export default function TechnicianPayments() {
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
-  const [editingPayment, setEditingPayment] = useState<number | null>(null);
-  const [paymentValue, setPaymentValue] = useState('');
-  const [filter, setFilter] = useState<'all' | 'pending' | 'paid'>('pending');
+  const [editing, setEditing] = useState<number | null>(null);
+  const [form, setForm] = useState({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: '1_dia', admin_payment_notes: '' });
+  const [filter, setFilter] = useState<'pending' | 'paid' | 'all'>('pending');
+  const [exporting, setExporting] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => { load(); }, []);
 
   useEffect(() => {
-    load();
+    api.getPaymentMethods().then(setPaymentMethods).catch(() => []);
   }, []);
 
   async function load() {
@@ -31,20 +36,41 @@ export default function TechnicianPayments() {
     setLoading(false);
   }
 
-  async function savePayment(jobId: number) {
-    const val = parseFloat(paymentValue.replace(/\D/g, ''));
-    if (isNaN(val) || val < 0) return;
+  async function handleApprove(jobId: number) {
     try {
-      await api.setJobPayment(jobId, val);
-      setEditingPayment(null);
-      setPaymentValue('');
+      await api.approveJob(jobId, {
+        amount: form.amount ? parseFloat(form.amount) : undefined,
+        technician_payment: form.technician_payment ? parseFloat(form.technician_payment) : undefined,
+        admin_payment_method: form.admin_payment_method,
+        admin_payment_schedule: form.admin_payment_schedule,
+        admin_payment_notes: form.admin_payment_notes
+      });
+      setEditing(null);
+      setForm({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: '1_dia', admin_payment_notes: '' });
       load();
     } catch (e: any) {
       alert(e.message || 'Error');
     }
   }
 
-  async function markPaid(jobId: number) {
+  async function handleSetPayment(jobId: number) {
+    try {
+      await api.setJobPaymentFull(jobId, {
+        amount: form.amount ? parseFloat(form.amount) : undefined,
+        technician_payment: form.technician_payment ? parseFloat(form.technician_payment) : undefined,
+        admin_payment_method: form.admin_payment_method,
+        admin_payment_schedule: form.admin_payment_schedule,
+        admin_payment_notes: form.admin_payment_notes
+      });
+      setEditing(null);
+      setForm({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: '1_dia', admin_payment_notes: '' });
+      load();
+    } catch (e: any) {
+      alert(e.message || 'Error');
+    }
+  }
+
+  async function markPaid(jobId: number, method: string) {
     try {
       await api.markJobPaid(jobId);
       load();
@@ -53,8 +79,18 @@ export default function TechnicianPayments() {
     }
   }
 
+  async function exportPayments() {
+    setExporting(true);
+    try {
+      await api.exportPaymentsExcel({});
+    } catch (e: any) {
+      alert(e.message || 'Error al exportar');
+    }
+    setExporting(false);
+  }
+
   const filtered = jobs.filter(j => {
-    if (filter === 'pending') return j.technician_paid !== 1 && j.photos?.length > 0;
+    if (filter === 'pending') return j.ticket_status === 'pendiente' || (j.technician_paid !== 1 && j.photos?.length > 0);
     if (filter === 'paid') return j.technician_paid === 1;
     return true;
   });
@@ -76,7 +112,22 @@ export default function TechnicianPayments() {
 
   return (
     <div className="p-4 space-y-4 animate-fade-in">
-      <h1 className="text-xl font-bold text-corporate-blue">Pagos a Técnicos</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-corporate-blue">Pagos a Técnicos</h1>
+        <div className="flex gap-2">
+          <Link to="/admin/auditoria-pagos" className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 rounded-lg text-sm hover:bg-gray-200">
+            <FileText size={16} /> Auditoría
+          </Link>
+          <button onClick={exportPayments} disabled={exporting}
+            className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
+            <Download size={16} /> Pagos
+          </button>
+          <button onClick={async () => { setExporting(true); try { await api.exportContableExcel({}); } catch (e: any) { alert(e.message || 'Error'); } setExporting(false); }} disabled={exporting}
+            className="flex items-center gap-1 px-3 py-1.5 bg-corporate-blue text-white rounded-lg text-sm hover:bg-[#002244] disabled:opacity-50">
+            <FileText size={16} /> Planilla Contable
+          </button>
+        </div>
+      </div>
 
       {summary && (
         <div className="grid grid-cols-3 gap-2">
@@ -89,21 +140,18 @@ export default function TechnicianPayments() {
             <p className="font-bold text-green-600">{formatCurrency(Number(summary.paid || 0))}</p>
           </div>
           <div className="bg-white rounded-xl p-3 shadow-sm border border-border-light">
-            <p className="text-xs text-text-secondary">Total servicios</p>
-            <p className="font-bold text-corporate-blue">{summary.count || 0}</p>
+            <p className="text-xs text-text-secondary">Pend. aprobación</p>
+            <p className="font-bold text-corporate-blue">{summary.pendingApproval || 0}</p>
           </div>
         </div>
       )}
 
       <div className="flex gap-2">
         {(['pending', 'paid', 'all'] as const).map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
+          <button key={f} onClick={() => setFilter(f)}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
               filter === f ? 'bg-corporate-blue text-white' : 'bg-gray-100 text-text-secondary hover:bg-gray-200'
-            }`}
-          >
+            }`}>
             {f === 'pending' ? 'Pendientes' : f === 'paid' ? 'Pagados' : 'Todos'}
           </button>
         ))}
@@ -115,20 +163,14 @@ export default function TechnicianPayments() {
           const totalPaid = techJobs.filter(j => j.technician_paid === 1).reduce((s, j) => s + Number(j.technician_payment || 0), 0);
 
           return (
-            <motion.div
-              key={techName}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-xl shadow-sm border border-border-light overflow-hidden"
-            >
-              <button
-                onClick={() => setExpanded(expanded === techJobs[0]?.technician_id ? null : techJobs[0]?.technician_id)}
-                className="w-full p-4 flex items-center justify-between text-left"
-              >
+            <motion.div key={techName} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-xl shadow-sm border border-border-light overflow-hidden">
+              <button onClick={() => setExpanded(expanded === techJobs[0]?.technician_id ? null : techJobs[0]?.technician_id)}
+                className="w-full p-4 flex items-center justify-between text-left">
                 <div>
                   <p className="font-semibold">{techName}</p>
                   <p className="text-xs text-text-secondary">
-                    {techJobs.length} servicio(s) · Pendiente: {formatCurrency(totalPending)} · Pagado: {formatCurrency(totalPaid)}
+                    {techJobs.length} ticket(s) · Pendiente: {formatCurrency(totalPending)} · Pagado: {formatCurrency(totalPaid)}
                   </p>
                 </div>
                 {expanded === techJobs[0]?.technician_id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -140,11 +182,7 @@ export default function TechnicianPayments() {
                     <div key={job.id} className="p-4">
                       <div className="flex gap-3">
                         {job.photos?.[0] ? (
-                          <img
-                            src={jobPhotoUrl(job.photos[0].image_path)}
-                            alt=""
-                            className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
-                          />
+                          <img src={jobPhotoUrl(job.photos[0].image_path)} alt="" className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />
                         ) : (
                           <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
                             <Camera size={24} className="text-gray-400" />
@@ -152,63 +190,78 @@ export default function TechnicianPayments() {
                         )}
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm">{job.client_name}</p>
-                          <p className="text-xs text-text-secondary">
-                            {job.job_service_name} · {formatDate(job.date)}
-                          </p>
-                          <p className="text-xs text-text-secondary">
-                            {job.client_type === 'particular' ? 'Particular' : 'Empresa'} · Cobro cliente: {formatCurrency(Number(job.amount || 0))}
+                          <p className="text-xs text-text-secondary">{job.job_service_name} · {formatDate(job.date)}</p>
+                          <p className="text-xs text-text-secondary">{clientTypeLabel(job.client_type)}
+                            {job.is_garantia === 1 && <span className="ml-1 px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px]">Garantía</span>}
                           </p>
                         </div>
-                        <div className="flex flex-col items-end gap-1">
-                          {editingPayment === job.id ? (
-                            <>
-                              <input
-                                type="number"
-                                value={paymentValue}
-                                onChange={e => setPaymentValue(e.target.value)}
-                                placeholder="Monto"
-                                className="w-24 px-2 py-1 rounded border text-sm"
-                                autoFocus
-                              />
-                              <div className="flex gap-1">
-                                <button
-                                  onClick={() => savePayment(job.id)}
-                                  className="text-xs bg-green-600 text-white px-2 py-1 rounded"
-                                >
-                                  OK
-                                </button>
-                                <button
-                                  onClick={() => { setEditingPayment(null); setPaymentValue(''); }}
-                                  className="text-xs bg-gray-400 text-white px-2 py-1 rounded"
-                                >
-                                  Cancelar
-                                </button>
+                        <div className="flex flex-col items-end gap-2">
+                          {editing === job.id ? (
+                            <div className="space-y-2 text-right">
+                              <input type="number" placeholder="Cobro cliente" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))}
+                                className="w-28 px-2 py-1 rounded border text-sm" />
+                              <input type="number" placeholder="Pago técnico" value={form.technician_payment} onChange={e => setForm(p => ({ ...p, technician_payment: e.target.value }))}
+                                className="w-28 px-2 py-1 rounded border text-sm" />
+                              <select value={form.admin_payment_method} onChange={e => setForm(p => ({ ...p, admin_payment_method: e.target.value }))}
+                                className="w-28 px-2 py-1 rounded border text-sm">
+                                <option value="">Método pago</option>
+                                {paymentMethods.map(pm => (
+                                  <option key={pm.id} value={pm.name}>{pm.name}</option>
+                                ))}
+                              </select>
+                              <select value={form.admin_payment_schedule} onChange={e => setForm(p => ({ ...p, admin_payment_schedule: e.target.value }))}
+                                className="w-36 px-2 py-1 rounded border text-sm">
+                                <option value="1_dia">1 día</option>
+                                <option value="5_dias">5 días</option>
+                                <option value="15_dias">15 días</option>
+                                <option value="30_dias">30 días</option>
+                                <option value="45_dias">45 días</option>
+                                <option value="inmediato_transferencia">Inmediato (transferencia)</option>
+                                <option value="inmediato_efectivo">Inmediato (efectivo)</option>
+                                <option value="garantia">No pago por garantía</option>
+                              </select>
+                              <input type="text" placeholder="Observaciones pago" value={form.admin_payment_notes} onChange={e => setForm(p => ({ ...p, admin_payment_notes: e.target.value }))}
+                                className="w-28 px-2 py-1 rounded border text-sm" />
+                              <div className="flex gap-1 justify-end">
+                                {job.ticket_status === 'pendiente' ? (
+                                  <button onClick={() => handleApprove(job.id)} className="text-xs bg-green-600 text-white px-2 py-1 rounded">Aprobar</button>
+                                ) : (
+                                  <button onClick={() => handleSetPayment(job.id)} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">Guardar</button>
+                                )}
+                                <button onClick={() => { setEditing(null); setForm({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: 'contado', admin_payment_notes: '' }); }}
+                                  className="text-xs bg-gray-400 text-white px-2 py-1 rounded">Cancelar</button>
                               </div>
-                            </>
+                            </div>
                           ) : (
                             <>
-                              <p className="font-bold text-corporate-blue">
-                                {formatCurrency(Number(job.technician_payment || 0))}
-                              </p>
-                              {!job.technician_paid ? (
-                                <div className="flex gap-1">
-                                  <button
-                                    onClick={() => { setEditingPayment(job.id); setPaymentValue(String(job.technician_payment || '')); }}
-                                    className="text-xs text-corporate-blue hover:underline flex items-center gap-0.5"
-                                  >
-                                    <DollarSign size={12} /> Asignar pago
-                                  </button>
-                                  {Number(job.technician_payment || 0) > 0 && (
-                                    <button
-                                      onClick={() => markPaid(job.id)}
-                                      className="text-xs text-green-600 hover:underline flex items-center gap-0.5"
-                                    >
-                                      <Check size={12} /> Pagar
-                                    </button>
-                                  )}
-                                </div>
+                              {job.is_garantia === 1 ? (
+                                <span className="text-xs font-medium px-2 py-1 rounded bg-gray-200 text-gray-600">Garantía (sin pago)</span>
                               ) : (
-                                <span className="text-xs text-green-600 font-medium">Pagado</span>
+                                <>
+                                  <p className="font-bold text-corporate-blue">{formatCurrency(Number(job.technician_payment || 0))}</p>
+                                  {job.admin_payment_notes && <p className="text-xs text-text-secondary max-w-[120px] truncate" title={job.admin_payment_notes}>{job.admin_payment_notes}</p>}
+                                  {!job.technician_paid ? (
+                                    <div className="flex gap-1">
+                                      <button onClick={() => { setEditing(job.id); setForm({
+                                        amount: String(job.amount || ''),
+                                        technician_payment: String(job.technician_payment || ''),
+                                        admin_payment_method: job.admin_payment_method || '',
+                                        admin_payment_schedule: job.admin_payment_schedule || '1_dia',
+                                        admin_payment_notes: job.admin_payment_notes || ''
+                                      }); }}
+                                        className="text-xs text-corporate-blue hover:underline flex items-center gap-0.5">
+                                        <DollarSign size={12} /> Asignar
+                                      </button>
+                                      {Number(job.technician_payment || 0) > 0 && (
+                                        <button onClick={() => markPaid(job.id)} className="text-xs text-green-600 hover:underline flex items-center gap-0.5">
+                                          <Check size={12} /> Pagar
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-green-600 font-medium">Pagado {job.admin_payment_method ? `(${job.admin_payment_method})` : ''}</span>
+                                  )}
+                                </>
                               )}
                             </>
                           )}
@@ -226,7 +279,7 @@ export default function TechnicianPayments() {
       {filtered.length === 0 && (
         <div className="bg-white rounded-xl p-8 text-center text-text-secondary">
           <DollarSign size={40} className="mx-auto mb-2 opacity-50" />
-          <p>No hay servicios {filter === 'pending' ? 'pendientes de pago' : filter === 'paid' ? 'pagados' : ''}</p>
+          <p>No hay tickets {filter === 'pending' ? 'pendientes' : filter === 'paid' ? 'pagados' : ''}</p>
         </div>
       )}
     </div>

@@ -18,6 +18,9 @@ import ServiceJobs from './pages/ServiceJobs';
 import NewServiceJob from './pages/NewServiceJob';
 import EditServiceJob from './pages/EditServiceJob';
 import TechnicianPayments from './pages/TechnicianPayments';
+import PaymentAudit from './pages/PaymentAudit';
+import AdminEquipment from './pages/AdminEquipment';
+import AdminWorkOrders from './pages/AdminWorkOrders';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, token } = useAuth();
@@ -49,7 +52,10 @@ export default function App() {
         <Route path="reportes" element={<Reports />} />
         <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
         <Route path="admin/pagos-tecnicos" element={<AdminRoute><TechnicianPayments /></AdminRoute>} />
+        <Route path="admin/auditoria-pagos" element={<AdminRoute><PaymentAudit /></AdminRoute>} />
         <Route path="admin/tipos-servicio" element={<AdminRoute><AdminJobServices /></AdminRoute>} />
+        <Route path="admin/equipos" element={<AdminRoute><AdminEquipment /></AdminRoute>} />
+        <Route path="admin/ordenes-trabajo" element={<AdminRoute><AdminWorkOrders /></AdminRoute>} />
         <Route path="admin/servicios" element={<AdminRoute><AdminServices /></AdminRoute>} />
         <Route path="admin/configuracion" element={<AdminRoute><AdminSettings /></AdminRoute>} />
         <Route path="admin/auditoria" element={<AdminRoute><AuditLog /></AdminRoute>} />

@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Filter, Trash2, Eye, X } from 'lucide-react';
+import { Plus, Search, Trash2, Eye, X, Send } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatDate, statusLabel, statusColor } from '../utils/format';
 
 export default function Expenses() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -38,6 +38,28 @@ export default function Expenses() {
     return matchSearch && matchStatus;
   });
 
+  function sendExpensesReportWhatsApp() {
+    const total = filtered.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+    const lines = [
+      `*Reporte de Gastos - Hidrourgencias*`,
+      `${user?.display_name || 'Técnico'} - ${new Date().toLocaleDateString('es-CL')}`,
+      ``,
+      ...filtered.map((e, i) =>
+        `${i + 1}. ${e.provider || 'Sin proveedor'} | ${formatCurrency(e.amount)} | ${formatDate(e.date)} | ${statusLabel(e.status)}${e.description ? `\n   ${e.description}` : ''}`
+      ),
+      ``,
+      `*Total: ${formatCurrency(total)}*`,
+      `Registros: ${filtered.length}`
+    ];
+    const text = lines.join('\n');
+    const openWa = (phoneRaw: string | undefined) => {
+      const p = String(phoneRaw || '56940918672').replace(/\D/g, '');
+      const num = p.startsWith('56') ? p : '56' + p;
+      window.open(`https://wa.me/${num}?text=${encodeURIComponent(text)}`, '_blank');
+    };
+    api.getWhatsappNumber().then((r: any) => openWa(r?.whatsapp_number)).catch(() => openWa(undefined));
+  }
+
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-3 border-corporate-light border-t-transparent rounded-full animate-spin" /></div>;
   }
@@ -46,9 +68,17 @@ export default function Expenses() {
     <div className="p-4 space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-corporate-blue">Gastos</h1>
-        <Link to="/gastos/nuevo" className="flex items-center gap-1 bg-corporate-light text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#0095cc] transition">
-          <Plus size={18} /> Nuevo
-        </Link>
+        <div className="flex gap-2">
+          {filtered.length > 0 && (
+            <button onClick={sendExpensesReportWhatsApp}
+              className="flex items-center gap-1 bg-[#25D366] text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#20BD5A] transition">
+              <Send size={18} /> Reporte de gastos
+            </button>
+          )}
+          <Link to="/gastos/nuevo" className="flex items-center gap-1 bg-corporate-light text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#0095cc] transition">
+            <Plus size={18} /> Nuevo
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}
@@ -84,7 +114,7 @@ export default function Expenses() {
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusColor(exp.status)}`}>
                       {statusLabel(exp.status)}
                     </span>
-                    {exp.paid === 1 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Pagado</span>}
+                    {isAdmin && exp.paid === 1 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Pagado</span>}
                   </div>
                   <p className="text-xs text-text-secondary mt-0.5">
                     {exp.service || 'Sin servicio'} · {formatDate(exp.date)}

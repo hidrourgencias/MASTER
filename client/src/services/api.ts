@@ -9,8 +9,6 @@ function getBaseUrl(): string {
   return '/api';
 }
 
-const BASE_URL = getBaseUrl();
-
 function getToken(): string | null {
   return localStorage.getItem('token');
 }
@@ -26,7 +24,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers['Content-Type'] = 'application/json';
   }
 
-  const res = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
+  const res = await fetch(`${getBaseUrl()}${endpoint}`, { ...options, headers });
 
   if (res.status === 401) {
     localStorage.removeItem('token');
@@ -104,6 +102,7 @@ export const api = {
   getSettings: () => request<any>('/admin/settings'),
   updateSettings: (data: any) =>
     request<any>('/admin/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  getPaymentMethods: () => request<any[]>('/admin/payment-methods'),
 
   getJobServices: () => request<any[]>('/jobs/job-services'),
   getJobs: () => request<any[]>('/jobs'),
@@ -117,6 +116,14 @@ export const api = {
     request<any>(`/jobs/${id}/set-payment`, {
       method: 'PUT', body: JSON.stringify({ technician_payment })
     }),
+  approveJob: (id: number, data: { amount?: number; technician_payment?: number; admin_payment_method?: string; admin_payment_schedule?: string; admin_payment_notes?: string }) =>
+    request<any>(`/jobs/${id}/approve`, {
+      method: 'PUT', body: JSON.stringify(data)
+    }),
+  setJobPaymentFull: (id: number, data: { amount?: number; technician_payment?: number; admin_payment_method?: string; admin_payment_schedule?: string; admin_payment_notes?: string }) =>
+    request<any>(`/jobs/${id}/set-payment`, {
+      method: 'PUT', body: JSON.stringify(data)
+    }),
   markJobPaid: (id: number) =>
     request<any>(`/jobs/${id}/mark-paid`, { method: 'PUT', body: JSON.stringify({}) }),
   deleteJob: (id: number) =>
@@ -127,6 +134,20 @@ export const api = {
     request<any>('/jobs/admin/job-services', { method: 'POST', body: JSON.stringify({ name }) }),
   deleteJobService: (id: number) =>
     request<any>(`/jobs/admin/job-services/${id}`, { method: 'DELETE' }),
+
+  getWorkOrders: () => request<any[]>('/work-orders'),
+  getNotifications: () => request<any[]>('/work-orders/notifications'),
+  receiveWorkOrderAssignment: (assignmentId: number) =>
+    request<any>(`/work-orders/assignments/${assignmentId}/receive`, { method: 'PUT' }),
+  getEquipmentCatalog: () => request<any[]>('/jobs/equipment'),
+  getAdminEquipment: () => request<any[]>('/admin/equipment'),
+  createEquipment: (name: string, category: string) =>
+    request<any>('/admin/equipment', { method: 'POST', body: JSON.stringify({ name, category }) }),
+  deleteEquipment: (id: number) =>
+    request<any>(`/admin/equipment/${id}`, { method: 'DELETE' }),
+
+  getWhatsappNumber: () => request<any>('/admin/settings').then((s: any) => ({ whatsapp_number: s?.whatsapp_number })),
+  getPaymentAudit: () => request<any[]>('/admin/payment-audit'),
 
   exportExcel: async (params: Record<string, string>) => {
     const token = getToken();
@@ -141,6 +162,40 @@ export const api = {
     const a = document.createElement('a');
     a.href = url;
     a.download = `rendiciones_${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  exportPaymentsExcel: async (params: Record<string, string> = {}) => {
+    const token = getToken();
+    const query = new URLSearchParams(params).toString();
+    const baseOrigin = localStorage.getItem('server_url') || '';
+    const res = await fetch(`${baseOrigin}/api/admin/export-payments?${query}`, {
+      headers: { Authorization: `Bearer ${token}` } as any
+    });
+    if (!res.ok) throw new Error('Error al exportar');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pagos_tecnicos_${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  exportContableExcel: async (params: Record<string, string> = {}) => {
+    const token = getToken();
+    const query = new URLSearchParams(params).toString();
+    const baseOrigin = localStorage.getItem('server_url') || '';
+    const res = await fetch(`${baseOrigin}/api/admin/export-contable?${query}`, {
+      headers: { Authorization: `Bearer ${token}` } as any
+    });
+    if (!res.ok) throw new Error('Error al exportar');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `planilla_contable_${new Date().toISOString().split('T')[0]}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   }

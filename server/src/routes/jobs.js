@@ -85,12 +85,22 @@ router.get('/summary', async (req, res) => {
     const paid = await db.prepare(`SELECT COALESCE(SUM(technician_payment), 0) as total FROM service_jobs j ${whereClause ? whereClause + ' AND' : 'WHERE'} j.technician_paid = 1`).get(...params);
     const pending = await db.prepare(`SELECT COALESCE(SUM(technician_payment), 0) as total FROM service_jobs j ${whereClause ? whereClause + ' AND' : 'WHERE'} j.technician_paid = 0 AND j.technician_payment > 0`).get(...params);
     const count = await db.prepare(`SELECT COUNT(*) as count FROM service_jobs j ${whereClause}`).get(...params);
+    const pendingApproval = await db.prepare(`SELECT COUNT(*) as count FROM service_jobs j ${whereClause ? whereClause + ' AND' : 'WHERE'} j.ticket_status = 'pendiente'`).get(...params);
 
-    res.json({ total: total.total, paid: paid.total, pending: pending.total, count: count.count });
+    res.json({
+      total: total.total, paid: paid.total, pending: pending.total, count: count.count,
+      myTicketsCount: count.count, pendingApprovalCount: pendingApproval.count, pendingApproval: pendingApproval.count
+    });
   } catch (err) {
     res.status(500).json({ error: 'Error al obtener resumen' });
   }
 });
+
+function sanitizeJobForTechnician(job) {
+  if (!job) return job;
+  const { amount, technician_payment, admin_payment_method, admin_payment_schedule, admin_payment_notes, ...rest } = job;
+  return rest;
+}
 
 router.get('/:id', async (req, res) => {
   try {
@@ -105,7 +115,8 @@ router.get('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Sin permisos' });
     }
     const photos = await db.prepare('SELECT * FROM service_job_photos WHERE service_job_id = ?').all(id);
-    res.json({ ...job, photos });
+    const out = req.user.role === 'admin' ? { ...job, photos } : { ...sanitizeJobForTechnician(job), photos };
+    res.json(out);
   } catch (err) {
     res.status(500).json({ error: 'Error' });
   }
@@ -131,7 +142,8 @@ router.get('/', async (req, res) => {
 
     const withPhotos = await Promise.all(jobs.map(async (j) => {
       const photos = await db.prepare('SELECT * FROM service_job_photos WHERE service_job_id = ?').all(j.id);
-      return { ...j, photos };
+      const row = { ...j, photos };
+      return req.user.role === 'admin' ? row : { ...sanitizeJobForTechnician(j), photos };
     }));
 
     res.json(withPhotos);
@@ -146,8 +158,8 @@ router.post('/', upload.array('photos', 10), async (req, res) => {
     ensureJobsUploadDir();
 
     const {
-      client_type, client_name, client_rut, address_street, address_number, address_comuna,
-      job_service_id, payment_type, payment_method, client_status, amount, date, notes
+      client_type, client_name, client_rut, address_street, address_number, address_comuna, client_phone,
+      job_service_id, payment_type, payment_method, client_status, amount, date, notes, is_garantia
     } = req.body;
 
     if (!client_type || !client_name || !job_service_id || !payment_type || !date) {
@@ -163,9 +175,9 @@ router.post('/', upload.array('photos', 10), async (req, res) => {
 
     const result = await db.prepare(`
       INSERT INTO service_jobs (technician_id, client_type, client_name, client_rut, address_street,
-        address_number, address_comuna, job_service_id, payment_type, payment_method,
-        client_status, amount, date, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+        address_number, address_comuna, client_phone, job_service_id, payment_type, payment_method,
+        client_status, amount, date, notes, is_garantia)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
     `).run(
       req.user.id,
       client_type,
@@ -174,13 +186,15 @@ router.post('/', upload.array('photos', 10), async (req, res) => {
       address_street || '',
       address_number || '',
       address_comuna || '',
+      client_phone || '',
       job_service_id,
       payment_type,
       payment_method || '',
       client_status || 'pendiente_pago',
       parseFloat(amount || 0),
       date,
-      notes || ''
+      notes || '',
+      is_garantia === '1' ? 1 : 0
     );
 
     const jobId = result.lastInsertRowid;
@@ -217,8 +231,8 @@ router.put('/:id', upload.array('photos', 5), async (req, res) => {
     }
 
     const {
-      client_type, client_name, client_rut, address_street, address_number, address_comuna,
-      job_service_id, payment_type, payment_method, client_status, amount, date, notes
+      client_type, client_name, client_rut, address_street, address_number, address_comuna, client_phone,
+      job_service_id, payment_type, payment_method, client_status, amount, date, notes, is_garantia
     } = req.body;
 
     const photosCount = await db.prepare('SELECT COUNT(*) as c FROM service_job_photos WHERE service_job_id = ?').get(id);
@@ -238,8 +252,8 @@ router.put('/:id', upload.array('photos', 5), async (req, res) => {
 
     await db.prepare(`
       UPDATE service_jobs SET client_type = ?, client_name = ?, client_rut = ?, address_street = ?,
-        address_number = ?, address_comuna = ?, job_service_id = ?, payment_type = ?,
-        payment_method = ?, client_status = ?, amount = ?, date = ?, notes = ?, updated_at = NOW()
+        address_number = ?, address_comuna = ?, client_phone = ?, job_service_id = ?, payment_type = ?,
+        payment_method = ?, client_status = ?, amount = ?, date = ?, notes = ?, is_garantia = ?, updated_at = NOW()
       WHERE id = ?
     `).run(
       client_type || job.client_type,
@@ -248,6 +262,7 @@ router.put('/:id', upload.array('photos', 5), async (req, res) => {
       address_street ?? job.address_street,
       address_number ?? job.address_number,
       address_comuna ?? job.address_comuna,
+      client_phone ?? job.client_phone,
       job_service_id || job.job_service_id,
       payment_type || job.payment_type,
       payment_method ?? job.payment_method,
@@ -255,6 +270,7 @@ router.put('/:id', upload.array('photos', 5), async (req, res) => {
       parseFloat(amount ?? job.amount),
       date || job.date,
       notes ?? job.notes,
+      is_garantia !== undefined ? (is_garantia === '1' || is_garantia === true || is_garantia === 1 ? 1 : 0) : job.is_garantia,
       id
     );
 
@@ -269,29 +285,105 @@ router.put('/:id', upload.array('photos', 5), async (req, res) => {
   }
 });
 
-router.put('/:id/set-payment', authMiddleware, adminMiddleware, async (req, res) => {
+async function sendPaymentNotification(db, technicianId, job, payAmount, scheduleLabel) {
+  try {
+    const msg = payAmount === 0
+      ? `Servicio de ${job.job_service_name || 'destape'} en "${job.client_name}". Modalidad: No pago por garantía. Estado: Por pagar.`
+      : `Servicio de ${job.job_service_name || 'destape'} en "${job.client_name}". Ha obtenido ingresos: $${Number(payAmount).toLocaleString('es-CL')}. Modalidad: ${scheduleLabel}. Estado: Por pagar.`;
+    await db.prepare(`
+      INSERT INTO notifications (user_id, type, title, message, created_at)
+      VALUES (?, 'PAGO_ASIGNADO', 'Pago asignado', ?, NOW())
+    `).run(technicianId, msg);
+  } catch (_) { /* tabla notifications puede no existir */ }
+}
+
+const PAYMENT_SCHEDULE_LABELS = {
+  '1_dia': '1 día', '5_dias': '5 días', '15_dias': '15 días', '30_dias': '30 días', '45_dias': '45 días',
+  'inmediato_transferencia': 'Pago inmediato (transferencia)', 'inmediato_efectivo': 'Pago inmediato (efectivo)',
+  'garantia': 'No pago por garantía'
+};
+
+router.put('/:id/approve', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { technician_payment } = req.body;
-    const amount = parseFloat(technician_payment);
-    if (isNaN(amount) || amount < 0) {
-      return res.status(400).json({ error: 'Monto inválido' });
-    }
+    const { amount, technician_payment, admin_payment_method, admin_payment_schedule, admin_payment_notes } = req.body;
+    const job = await db.prepare(`
+      SELECT j.*, js.name as job_service_name FROM service_jobs j
+      LEFT JOIN job_services js ON j.job_service_id = js.id WHERE j.id = ?
+    `).get(id);
+    if (!job) return res.status(404).json({ error: 'No encontrado' });
 
-    await db.prepare('UPDATE service_jobs SET technician_payment = ?, updated_at = NOW() WHERE id = ?').run(amount, id);
+    const isGarantia = job.is_garantia === 1 || admin_payment_schedule === 'garantia';
+    const payAmount = isGarantia ? 0 : (parseFloat(technician_payment) || 0);
+    const amt = amount != null ? parseFloat(amount) : job.amount;
+
+    await db.prepare(`
+      UPDATE service_jobs SET amount = ?, technician_payment = ?, ticket_status = 'aprobado',
+        admin_payment_method = ?, admin_payment_schedule = ?, admin_payment_notes = ?, updated_at = NOW()
+      WHERE id = ?
+    `).run(amt, payAmount, admin_payment_method || null, admin_payment_schedule || null, admin_payment_notes || null, id);
 
     await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
-      .run(req.user.id, 'SET_JOB_PAYMENT', `Pago técnico #${id}: $${amount}`);
+      .run(req.user.id, 'APPROVE_JOB', `Ticket #${id} aprobado. Pago técnico: $${payAmount}`);
 
-    const job = await db.prepare(`
+    if (job.technician_id) {
+      const label = PAYMENT_SCHEDULE_LABELS[admin_payment_schedule] || admin_payment_schedule || '';
+      await sendPaymentNotification(db, job.technician_id, job, payAmount, label);
+    }
+
+    const updated = await db.prepare(`
       SELECT j.*, js.name as job_service_name, u.display_name as technician_name
       FROM service_jobs j LEFT JOIN job_services js ON j.job_service_id = js.id
       LEFT JOIN users u ON j.technician_id = u.id WHERE j.id = ?
     `).get(id);
     const photos = await db.prepare('SELECT * FROM service_job_photos WHERE service_job_id = ?').all(id);
-    res.json({ ...job, photos });
+    res.json({ ...updated, photos });
   } catch (err) {
-    res.status(500).json({ error: 'Error al asignar pago' });
+    console.error('Approve job error:', err);
+    res.status(500).json({ error: err.message || 'Error al aprobar' });
+  }
+});
+
+router.put('/:id/set-payment', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { technician_payment, admin_payment_method, admin_payment_schedule, admin_payment_notes } = req.body;
+    const job = await db.prepare(`
+      SELECT j.*, js.name as job_service_name FROM service_jobs j
+      LEFT JOIN job_services js ON j.job_service_id = js.id WHERE j.id = ?
+    `).get(id);
+    if (!job) return res.status(404).json({ error: 'No encontrado' });
+
+    const isGarantia = job.is_garantia === 1 || admin_payment_schedule === 'garantia';
+    const payAmount = isGarantia ? 0 : (parseFloat(technician_payment) ?? job.technician_payment ?? 0);
+    if (!isGarantia && (isNaN(payAmount) || payAmount < 0)) {
+      return res.status(400).json({ error: 'Monto inválido' });
+    }
+
+    await db.prepare(`
+      UPDATE service_jobs SET technician_payment = ?, admin_payment_method = ?,
+        admin_payment_schedule = ?, admin_payment_notes = ?, updated_at = NOW()
+      WHERE id = ?
+    `).run(payAmount, admin_payment_method || null, admin_payment_schedule || null, admin_payment_notes || null, id);
+
+    await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
+      .run(req.user.id, 'SET_JOB_PAYMENT', `Pago técnico #${id}: $${payAmount}`);
+
+    if (job.technician_id) {
+      const label = PAYMENT_SCHEDULE_LABELS[admin_payment_schedule] || admin_payment_schedule || '';
+      await sendPaymentNotification(db, job.technician_id, job, payAmount, label);
+    }
+
+    const updated = await db.prepare(`
+      SELECT j.*, js.name as job_service_name, u.display_name as technician_name
+      FROM service_jobs j LEFT JOIN job_services js ON j.job_service_id = js.id
+      LEFT JOIN users u ON j.technician_id = u.id WHERE j.id = ?
+    `).get(id);
+    const photos = await db.prepare('SELECT * FROM service_job_photos WHERE service_job_id = ?').all(id);
+    res.json({ ...updated, photos });
+  } catch (err) {
+    console.error('Set payment error:', err);
+    res.status(500).json({ error: err.message || 'Error al asignar pago' });
   }
 });
 
@@ -337,6 +429,125 @@ router.delete('/:id', async (req, res) => {
     res.json({ message: 'Servicio eliminado' });
   } catch (err) {
     res.status(500).json({ error: 'Error al eliminar' });
+  }
+});
+
+router.post('/:id/postventa', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const job = await db.prepare(`
+      SELECT j.*, js.name as job_service_name, u.display_name as technician_name
+      FROM service_jobs j 
+      LEFT JOIN job_services js ON j.job_service_id = js.id
+      LEFT JOIN users u ON j.technician_id = u.id 
+      WHERE j.id = ?
+    `).get(id);
+
+    if (!job) return res.status(404).json({ error: 'Trabajo no encontrado' });
+
+    // Date calculations: +5 business days
+    const startDate = new Date(job.date);
+    if (isNaN(startDate.getTime())) {
+      return res.status(400).json({ error: 'Fecha de servicio inválida' });
+    }
+
+    let daysAdded = 0;
+    let reminderDate = new Date(startDate);
+    while (daysAdded < 5) {
+      reminderDate.setDate(reminderDate.getDate() + 1);
+      if (reminderDate.getDay() !== 0 && reminderDate.getDay() !== 6) { // Skip Sunday and Saturday
+        daysAdded++;
+      }
+    }
+    const isoDateStr = reminderDate.toISOString().split('T')[0];
+
+    // Check if reminder already exists
+    const existing = await db.prepare('SELECT id FROM postventa_reminders WHERE service_job_id = ?').get(id);
+    if (existing) {
+      // Update
+      await db.prepare('UPDATE postventa_reminders SET scheduled_date = ? WHERE id = ?').run(isoDateStr, existing.id);
+    } else {
+      // Insert
+      await db.prepare(`
+        INSERT INTO postventa_reminders (service_job_id, scheduled_date) VALUES (?, ?)
+      `).run(id, isoDateStr);
+    }
+
+    // Generate Google Calendar Link
+    // Format YYYYMMDD
+    const calDateStr = isoDateStr.replace(/-/g, '');
+    const startTime = `${calDateStr}T090000Z`; // 09:00 UTC
+    const endTime = `${calDateStr}T100000Z`; // 10:00 UTC
+    
+    const title = encodeURIComponent(`Postventa: ${job.client_name}`);
+    const details = encodeURIComponent(`
+=========================================
+RECORDATORIO DE POSTVENTA HIDROURGENCIAS SpA
+=========================================
+
+DATOS DEL CLIENTE:
+- Cliente: ${job.client_name}
+- Fono Contacto / WhatsApp: ${job.client_phone || '___'}
+- Dirección: ${job.address_street} ${job.address_number}, ${job.address_comuna}
+
+SERVICIO EJECUTADO:
+- Servicio: ${job.job_service_name || 'No especificado'}
+- Día de ejecución: ${job.date}
+- Técnico: ${job.technician_name}
+- Observaciones técnicas de la visita: ${job.notes || 'Sin observaciones'}
+
+=========================================
+GUÍA DE COMUNICACIÓN (POSTVENTA)
+=========================================
+
+1. CONSULTA INICIAL:
+"Hola, le escribimos de Hidrourgencias SpA para consultar cómo ha funcionado la red o el trabajo ejecutado tras nuestro servicio de ${job.job_service_name || 'destape/mantención'} ejecutado hace unos días."
+
+2. RECOMENDACIÓN TÉCNICA (MODIFICAR SEGÚN CASO):
+Recomendar los servicios de mantención de redes con sistema hidrojet, maquinaria o inspecciones.
+Ejemplo: "Se recomienda mantención preventiva de redes de alcantarillado o desagües periódicamente al año o año y medio en casas particulares para evitar obstrucciones severas y preservar el sistema sanitario en óptimas condiciones."
+
+3. ACCIÓN PARA ESTE EVENTO DE GOOGLE CALENDAR:
+- Editar la fecha de este recordatorio (ej. programar para 6 meses o 1 año más).
+- Así, en el futuro enviará el mensaje: "Ya es tiempo de su mantención periódica al cliente ${job.client_name}".
+
+=========================================
+ESTRATEGIA: TRIÁNGULO DE SERVICIOS SANITARIOS
+=========================================
+Objetivo: Generar trazabilidad de cliente para pasar de emergencias a contratos de servicios.
+
+1. EMERGENCIA (La puerta de entrada):
+- El destape resuelve el síntoma.
+- Características: urgencia alta, pago inmediato, cliente estresado, decisión rápida.
+- Ejemplos: destape de alcantarillado, rebalse, retorno, inundación.
+
+2. DIAGNÓSTICO (Servicio técnico especializado):
+- Después de resolver la emergencia se ofrece el diagnóstico para detectar problemas estructurales antes de un nuevo colapso.
+- Servicios: videoinspección CCTV, evaluación de colectores, inspección de cámaras.
+
+3. MANTENIMIENTO (Ingreso recurrente):
+- La verdadera estabilidad del negocio.
+- Servicios: limpieza preventiva de colectores, lavado hidrojet programado.
+- Explicar al cliente qué riesgo existe si no se mantiene y qué intervención preventiva lo evita.
+
+PIRÁMIDE DE CLIENTES SANITARIOS:
+- Nivel 1 (Emergencia ocasional): Llaman solo cuando el sistema colapsa (casas, deptos).
+- Nivel 2 (Recurrentes): Ya conocen el servicio y repiten cuando ocurre otra falla.
+- Nivel 3 (Mantenimiento preventivo): Aceptan recomendaciones técnicas y programan limpiezas.
+- Nivel 4 (Estratégicos): Contratos de mantenimiento, múltiples instalaciones (cadenas, industrias, grandes condominios).
+
+Tu objetivo en esta postventa es subir al cliente al Nivel 2 o 3 de la pirámide mediante el Triángulo de Servicios.
+`.trim());
+
+    const location = encodeURIComponent(`${job.address_street} ${job.address_number}, ${job.address_comuna}`);
+
+    const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startTime}/${endTime}&details=${details}&location=${location}`;
+
+    res.json({ message: 'Recordatorio programado', googleCalendarUrl: gcalUrl, scheduled_date: isoDateStr });
+
+  } catch (err) {
+    console.error('Postventa error:', err);
+    res.status(500).json({ error: 'Error al programar postventa' });
   }
 });
 

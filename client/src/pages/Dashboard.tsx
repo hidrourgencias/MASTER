@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Camera, Receipt, DollarSign, Clock, CheckCircle, TrendingUp, Send, Briefcase } from 'lucide-react';
+import { Camera, Receipt, DollarSign, Clock, CheckCircle, Send, Briefcase, Plus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { formatCurrency } from '../utils/format';
 
 export default function Dashboard() {
   const { user, isAdmin } = useAuth();
-  const [summary, setSummary] = useState<any>(null);
-  const [expenses, setExpenses] = useState<any[]>([]);
+  const [jobSummary, setJobSummary] = useState<any>(null);
+  const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,148 +18,107 @@ export default function Dashboard() {
 
   async function loadData() {
     try {
-      const [s, e] = await Promise.all([api.getExpenseSummary(), api.getExpenses()]);
-      setSummary(s);
-      setExpenses(e);
+      const [s, wo] = await Promise.all([
+        api.getJobSummary().catch(() => null),
+        api.getWorkOrders ? api.getWorkOrders().catch(() => []) : Promise.resolve([])
+      ]);
+      setJobSummary(s);
+      setWorkOrders(wo || []);
     } catch { /* ignore */ }
     setLoading(false);
   }
 
-  const todayExpenses = expenses.filter(e => e.date === new Date().toISOString().split('T')[0]);
-
-  function sendWhatsApp() {
-    const today = new Date().toLocaleDateString('es-CL');
-    let text = `*Rendición de Gastos - ${user?.display_name}*\nFecha: ${today}\n\n`;
-
-    if (todayExpenses.length === 0) {
-      text += 'Sin gastos registrados hoy.\n';
-    } else {
-      todayExpenses.forEach((e, i) => {
-        text += `${i + 1}. ${e.provider || 'Sin proveedor'} - ${formatCurrency(e.amount)} (${e.service || 'Sin servicio'})\n`;
-      });
-      const total = todayExpenses.reduce((s: number, e: any) => s + e.amount, 0);
-      text += `\n*Total del día: ${formatCurrency(total)}*`;
-    }
-
-    const encoded = encodeURIComponent(text);
-    window.open(`https://wa.me/56940918672?text=${encoded}`, '_blank');
-  }
+  const pendingOrders = workOrders.filter((wo: any) =>
+    wo.assignments?.some((a: any) => a.technician_id === user?.id && !a.received_at)
+  );
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-3 border-corporate-light border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-corporate-light border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
     <div className="p-4 space-y-4 animate-fade-in">
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-xl font-bold text-corporate-blue">Hola, {user?.display_name}</h1>
-        <p className="text-sm text-text-secondary">
-          {isAdmin ? 'Panel de Administración' : 'Panel de Control'}
-        </p>
-      </motion.div>
+      <h1 className="text-xl font-bold text-corporate-blue">Órdenes y Servicios</h1>
+      <p className="text-sm text-text-secondary">Hola, {user?.display_name}</p>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-3">
-        <SummaryCard icon={DollarSign} label="Total Gastos" value={formatCurrency(summary?.total || 0)} color="bg-corporate-blue" />
-        <SummaryCard icon={CheckCircle} label="Pagados" value={formatCurrency(summary?.paid || 0)} color="bg-success" />
-        <SummaryCard icon={Clock} label="Por Pagar" value={formatCurrency(summary?.pending || 0)} color="bg-warning" />
-        <SummaryCard icon={TrendingUp} label="Pendientes" value={String(summary?.pendingApproval || 0)} color="bg-corporate-light" />
-      </div>
+      {/* Job Summary */}
+      {jobSummary && (
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-white rounded-xl p-3 shadow-sm border">
+            <p className="text-xs text-text-secondary">Mis tickets</p>
+            <p className="font-bold text-corporate-blue">{jobSummary.myTicketsCount ?? jobSummary.count ?? 0}</p>
+          </div>
+          <div className="bg-white rounded-xl p-3 shadow-sm border">
+            <p className="text-xs text-text-secondary">En revisión</p>
+            <p className="font-bold text-amber-600">{jobSummary.pendingApprovalCount ?? jobSummary.pendingApproval ?? 0}</p>
+          </div>
+          {isAdmin && (
+            <>
+              <div className="bg-white rounded-xl p-3 shadow-sm border">
+                <p className="text-xs text-text-secondary">Pendiente pago</p>
+                <p className="font-bold text-corporate-blue">{formatCurrency(Number(jobSummary.pending || 0))}</p>
+              </div>
+              <div className="bg-white rounded-xl p-3 shadow-sm border">
+                <p className="text-xs text-text-secondary">Pagado</p>
+                <p className="font-bold text-green-600">{formatCurrency(Number(jobSummary.paid || 0))}</p>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Pending Work Orders - Technician */}
+      {!isAdmin && pendingOrders.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <p className="font-semibold text-amber-800 text-sm mb-2">Órdenes pendientes de recepción</p>
+          <Link to="/perfil" className="text-sm text-amber-700 font-medium underline">Ir a Perfil para confirmar</Link>
+        </div>
+      )}
 
       {/* Quick Actions */}
-      <div className="space-y-2">
-        <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">Acciones Rápidas</h2>
+      <div>
+        <h2 className="text-sm font-semibold text-text-secondary uppercase mb-2">Acciones rápidas</h2>
         <div className="grid grid-cols-2 gap-3">
-          <Link to="/gastos/nuevo" className="flex items-center gap-3 bg-white p-4 rounded-xl shadow-sm border border-border-light hover:shadow-md transition">
-            <div className="w-10 h-10 bg-corporate-light/10 rounded-xl flex items-center justify-center">
-              <Camera size={20} className="text-corporate-light" />
+          <Link to="/servicios/nuevo" className="flex items-center gap-3 bg-white p-4 rounded-xl shadow-sm border hover:shadow-md transition">
+            <div className="w-10 h-10 bg-corporate-light/20 rounded-xl flex items-center justify-center">
+              <Plus size={22} className="text-corporate-light" />
             </div>
             <div>
-              <p className="font-semibold text-sm">Escanear</p>
-              <p className="text-xs text-text-secondary">Boleta / Factura</p>
+              <p className="font-semibold text-sm">Nuevo Servicio</p>
+              <p className="text-xs text-text-secondary">Registrar ticket</p>
             </div>
           </Link>
-          <Link to="/gastos/nuevo?manual=true" className="flex items-center gap-3 bg-white p-4 rounded-xl shadow-sm border border-border-light hover:shadow-md transition">
-            <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-              <Receipt size={20} className="text-success" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm">Registro</p>
-              <p className="text-xs text-text-secondary">Manual</p>
-            </div>
-          </Link>
-          <Link to="/servicios/nuevo" className="flex items-center gap-3 bg-white p-4 rounded-xl shadow-sm border border-border-light hover:shadow-md transition">
+          <Link to="/servicios" className="flex items-center gap-3 bg-white p-4 rounded-xl shadow-sm border hover:shadow-md transition">
             <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
               <Briefcase size={20} className="text-amber-600" />
             </div>
             <div>
-              <p className="font-semibold text-sm">Servicio</p>
-              <p className="text-xs text-text-secondary">Registrar cobro</p>
+              <p className="font-semibold text-sm">Mis Servicios</p>
+              <p className="text-xs text-text-secondary">Ver tickets</p>
             </div>
           </Link>
+          {isAdmin && (
+            <Link to="/admin/ordenes-trabajo" className="col-span-2 flex items-center gap-3 bg-white p-4 rounded-xl shadow-sm border hover:shadow-md transition">
+              <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                <Send size={20} className="text-green-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm">Órdenes de Trabajo</p>
+                <p className="text-xs text-text-secondary">Crear y despachar</p>
+              </div>
+            </Link>
+          )}
         </div>
       </div>
 
-      {/* WhatsApp Report */}
-      <motion.button whileTap={{ scale: 0.98 }}
-        onClick={sendWhatsApp}
-        className="w-full flex items-center gap-3 bg-[#25D366] text-white p-4 rounded-xl shadow-sm hover:bg-[#20BD5A] transition">
-        <Send size={20} />
-        <div className="text-left">
-          <p className="font-semibold text-sm">Enviar Reporte por WhatsApp</p>
-          <p className="text-xs opacity-80">{todayExpenses.length} gastos hoy</p>
-        </div>
-      </motion.button>
-
-      {/* Recent Expenses */}
-      <div>
-        <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide mb-2">Últimos Gastos</h2>
-        {expenses.length === 0 ? (
-          <div className="bg-white rounded-xl p-6 text-center text-text-secondary shadow-sm">
-            <Receipt size={32} className="mx-auto mb-2 opacity-30" />
-            <p className="text-sm">No hay gastos registrados</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {expenses.slice(0, 5).map(exp => (
-              <motion.div key={exp.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                className="bg-white rounded-xl p-3 shadow-sm border border-border-light flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">{exp.provider || 'Sin proveedor'}</p>
-                  <p className="text-xs text-text-secondary">{exp.service || 'Sin servicio'} · {exp.date}</p>
-                </div>
-                <div className="text-right ml-3">
-                  <p className="font-bold text-sm">{formatCurrency(exp.amount)}</p>
-                  <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                    exp.status === 'aprobado' ? 'bg-green-100 text-green-700' :
-                    exp.status === 'rechazado' ? 'bg-red-100 text-red-700' :
-                    'bg-yellow-100 text-yellow-700'
-                  }`}>
-                    {exp.paid ? 'Pagado' : exp.status === 'aprobado' ? 'Aprobado' : exp.status === 'rechazado' ? 'Rechazado' : 'Pendiente'}
-                  </span>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Gastos shortcut */}
+      <Link to="/gastos" className="block p-3 bg-gray-50 rounded-xl border border-gray-200 text-sm text-text-secondary hover:bg-gray-100">
+        Ir a Control de Gastos →
+      </Link>
     </div>
-  );
-}
-
-function SummaryCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: string; color: string }) {
-  return (
-    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-      className="bg-white rounded-xl p-4 shadow-sm border border-border-light">
-      <div className={`w-9 h-9 ${color} rounded-lg flex items-center justify-center mb-2`}>
-        <Icon size={18} className="text-white" />
-      </div>
-      <p className="text-lg font-bold text-text-primary">{value}</p>
-      <p className="text-xs text-text-secondary">{label}</p>
-    </motion.div>
   );
 }

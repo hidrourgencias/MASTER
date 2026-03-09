@@ -9,6 +9,9 @@
     "build": "echo Build complete"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.0",
+    "@prisma/client": "^6.19.2",
+    "adm-zip": "^0.5.16",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -16,10 +19,12 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "pg": "^8.13.1",
-    "xlsx": "^0.18.5",
-    "@google/generative-ai": "^0.24.0"
+    "xlsx": "^0.18.5"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.2"
   }
 }

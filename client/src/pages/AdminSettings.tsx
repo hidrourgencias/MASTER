@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Save, Loader2, Settings, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Settings, Sparkles, Plus, Trash2, CreditCard } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function AdminSettings() {
@@ -9,9 +9,15 @@ export default function AdminSettings() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<{ id: number; name: string }[]>([]);
+  const [newPaymentMethod, setNewPaymentMethod] = useState('');
 
   useEffect(() => {
     api.getSettings().then(setSettings).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    api.getPaymentMethods().then(setPaymentMethods).catch(() => []);
   }, []);
 
   async function handleSave() {
@@ -88,6 +94,43 @@ export default function AdminSettings() {
           <input type="text" value={settings.whatsapp_number || ''} onChange={e => update('whatsapp_number', e.target.value)}
             className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm focus:ring-2 focus:ring-corporate-light outline-none" />
         </div>
+      </div>
+
+      {/* Payment Methods */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-border-light space-y-4">
+        <h2 className="font-semibold text-sm text-corporate-blue flex items-center gap-2"><CreditCard size={16} /> Métodos de Pago</h2>
+        <div className="flex gap-2">
+          <input type="text" placeholder="Nuevo método (ej: Transferencia)" value={newPaymentMethod}
+            onChange={e => setNewPaymentMethod(e.target.value)}
+            className="flex-1 px-3 py-2.5 rounded-xl border border-border-light text-sm" />
+          <button onClick={async () => {
+            if (!newPaymentMethod.trim()) return;
+            try {
+              await api.createPaymentMethod(newPaymentMethod.trim());
+              setNewPaymentMethod('');
+              const list = await api.getPaymentMethods();
+              setPaymentMethods(list);
+            } catch (e: any) { alert(e.message || 'Error'); }
+          }} className="px-4 py-2.5 bg-corporate-blue text-white rounded-xl text-sm font-medium flex items-center gap-1">
+            <Plus size={16} /> Agregar
+          </button>
+        </div>
+        <ul className="space-y-1">
+          {paymentMethods.map(pm => (
+            <li key={pm.id} className="flex items-center justify-between py-2 border-b border-border-light last:border-0">
+              <span className="text-sm">{pm.name}</span>
+              <button onClick={async () => {
+                if (!confirm('¿Eliminar este método?')) return;
+                try {
+                  await api.deletePaymentMethod(pm.id);
+                  setPaymentMethods(prev => prev.filter(p => p.id !== pm.id));
+                } catch (e: any) { alert(e.message || 'Error'); }
+              }} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg">
+                <Trash2 size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
 
       <button onClick={handleSave} disabled={saving}

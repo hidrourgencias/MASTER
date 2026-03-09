@@ -2,11 +2,16 @@
   "name": "hidrourgencias-rendiciones",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "engines": {
     "node": ">=18"
   },
+  "dependencies": {
+    "localtunnel": "^2.0.2"
+  },
   "scripts": {
     "build": "cd client && npm install && npx vite build && cd ../server && npm install",
-    "start": "cd server && node src/index.js"
+    "start": "cd server && node src/index.js",
+    "dev": "cd server && npm run dev"
   }
 }

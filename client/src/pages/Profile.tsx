@@ -1,18 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { User, CreditCard, Lock, LogOut, Loader2, Save, CheckCircle } from 'lucide-react';
+import { User, CreditCard, Lock, LogOut, Loader2, Save, CheckCircle, ClipboardCheck, Bell } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 
+const ATTENTION_LABELS: Record<string, string> = {
+  urgencia_coordinar: 'Urgencia', cotizacion: 'Cotización', visita_tecnica: 'Visita técnica'
+};
+
 export default function Profile() {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout, refreshUser, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({
     display_name: '', rut: '', bank_name: '', bank_account_type: '', bank_account_number: ''
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [workOrders, setWorkOrders] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -25,6 +31,25 @@ export default function Profile() {
       });
     }
   }, [user]);
+
+  useEffect(() => {
+    if (user && !isAdmin) {
+      api.getWorkOrders().then(setWorkOrders).catch(() => {});
+      api.getNotifications().then(setNotifications).catch(() => {});
+    }
+  }, [user, isAdmin]);
+
+  async function handleReceiveTicket(assignmentId: number) {
+    try {
+      await api.receiveWorkOrderAssignment(assignmentId);
+      setWorkOrders(prev => prev.map(wo => ({
+        ...wo,
+        assignments: wo.assignments?.map((a: any) => a.id === assignmentId ? { ...a, received_at: new Date().toISOString() } : a)
+      })));
+    } catch (e: any) {
+      alert(e.message || 'Error');
+    }
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -117,6 +142,47 @@ export default function Profile() {
             saved ? <><CheckCircle size={20} /> Guardado</> : <><Save size={20} /> Guardar Cambios</>}
         </button>
       </form>
+
+      {/* Payment notifications - Technicians only */}
+      {!isAdmin && notifications.filter((n: any) => n.type === 'PAGO_ASIGNADO').length > 0 && (
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-border-light space-y-3">
+          <h3 className="font-semibold text-sm text-corporate-blue flex items-center gap-2">
+            <Bell size={16} /> Notificaciones de pago
+          </h3>
+          {notifications
+            .filter((n: any) => n.type === 'PAGO_ASIGNADO')
+            .slice(0, 10)
+            .map((n: any) => (
+              <div key={n.id} className="p-3 rounded-xl border bg-green-50 border-green-200">
+                <p className="font-medium text-sm text-green-800">{n.title || 'Pago asignado'}</p>
+                <p className="text-xs text-text-secondary mt-0.5">{n.message}</p>
+                {n.created_at && <p className="text-xs text-text-secondary mt-1">{new Date(n.created_at).toLocaleString('es-CL')}</p>}
+              </div>
+            ))}
+        </div>
+      )}
+
+      {/* Work orders - Technicians only */}
+      {!isAdmin && workOrders.length > 0 && (
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-border-light space-y-3">
+          <h3 className="font-semibold text-sm text-corporate-blue flex items-center gap-2">
+            <ClipboardCheck size={16} /> Órdenes de trabajo
+          </h3>
+          {workOrders.flatMap(wo => (wo.assignments || [])
+            .filter((a: any) => a.technician_id === user?.id && !a.received_at)
+            .map((a: any) => (
+              <div key={a.id} className="p-3 rounded-xl border bg-amber-50 border-amber-200">
+                <p className="font-medium text-sm">{wo.client_name} · {ATTENTION_LABELS[wo.attention_type] || wo.attention_type}</p>
+                <p className="text-xs text-text-secondary mt-0.5">{wo.service_type_name} · {wo.address}</p>
+                <button onClick={() => handleReceiveTicket(a.id)}
+                  className="mt-2 w-full py-2.5 bg-corporate-light text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+                  <ClipboardCheck size={18} /> Recibí el ticket de orden de trabajo
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="space-y-2">

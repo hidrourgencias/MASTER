@@ -16,7 +16,7 @@ export default function Support() {
           <Droplets size={32} className="text-corporate-light" />
         </div>
         <h2 className="font-bold text-lg">Hidrourgencias SpA</h2>
-        <p className="text-sm text-text-secondary mt-1">Sistema de Rendición de Gastos v1.0</p>
+        <p className="text-sm text-text-secondary mt-1">Sistema de Rendición de Gastos v1.3</p>
       </div>
 
       <div className="space-y-2">

@@ -21,6 +21,173 @@ router.get('/audit-log', async (req, res) => {
   }
 });
 
+router.get('/payment-methods', async (req, res) => {
+  try {
+    const rows = await db.prepare('SELECT * FROM payment_methods WHERE active = 1 ORDER BY name').all();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener métodos de pago' });
+  }
+});
+
+router.post('/payment-methods', async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+    await db.prepare('INSERT INTO payment_methods (name) VALUES (?)').run(name.trim());
+    const row = await db.prepare('SELECT * FROM payment_methods ORDER BY id DESC LIMIT 1').get();
+    res.status(201).json(row);
+  } catch (err) {
+    if (err.message?.includes('unique') || err.code === '23505') return res.status(400).json({ error: 'El método ya existe' });
+    res.status(500).json({ error: 'Error al crear' });
+  }
+});
+
+router.delete('/payment-methods/:id', async (req, res) => {
+  try {
+    await db.prepare('UPDATE payment_methods SET active = 0 WHERE id = ?').run(req.params.id);
+    res.json({ message: 'Método desactivado' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al eliminar' });
+  }
+});
+
+router.get('/export-contable', async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const jobParams = [];
+    let jobWhere = '(j.is_garantia IS NULL OR j.is_garantia = 0) AND j.amount > 0';
+    if (from) { jobWhere += ' AND j.date >= ?'; jobParams.push(from); }
+    if (to) { jobWhere += ' AND j.date <= ?'; jobParams.push(to); }
+
+    const ingresosData = (await db.prepare(`
+      SELECT j.id, j.date, j.client_name, j.client_rut, js.name as service_name,
+        j.amount, j.client_type, j.admin_payment_method
+      FROM service_jobs j
+      LEFT JOIN job_services js ON j.job_service_id = js.id
+      WHERE ${jobWhere}
+      ORDER BY j.date ASC
+    `).all(...jobParams)).map(r => {
+      const isFactura = r.client_type === 'COMERCIAL' || r.client_type === 'EMPRESA';
+      const total = Number(r.amount);
+      const neto = isFactura ? Math.round(total / 1.19) : total;
+      const iva = isFactura ? Math.round(total - neto) : 0;
+      return {
+        Tipo: 'Ingreso', Fecha: r.date, Descripcion: r.service_name || 'Servicio', RUT: r.client_rut || '',
+        Razon_Social: r.client_name, Monto_Neto: neto, IVA: iva, Monto_Total: total,
+        Metodo_Pago: r.admin_payment_method || '', Tipo_Doc: isFactura ? 'Factura' : 'Boleta', Origen: `Ticket #${r.id}`
+      };
+    });
+
+    const expParams = [];
+    let expWhere = "e.status IN ('aprobado','pagado')";
+    if (from) { expWhere += ' AND e.date >= ?'; expParams.push(from); }
+    if (to) { expWhere += ' AND e.date <= ?'; expParams.push(to); }
+    const egresosGastos = (await db.prepare(`
+      SELECT e.id, e.date, e.provider, e.provider_rut, e.service, e.amount, e.document_type
+      FROM expenses e
+      WHERE ${expWhere}
+      ORDER BY e.date ASC
+    `).all(...expParams)).map(r => {
+      const isFactura = String(r.document_type || '').toLowerCase() === 'factura' || r.client_type === 'EMPRESA';
+      const total = Number(r.amount);
+      const neto = isFactura ? Math.round(total / 1.19) : total;
+      const iva = isFactura ? Math.round(total - neto) : 0;
+      return {
+        Tipo: 'Egreso', Fecha: r.date, Descripcion: r.service || 'Gasto', RUT: r.provider_rut || '',
+        Razon_Social: r.provider || 'Proveedor', Monto_Neto: neto, IVA: iva, Monto_Total: total,
+        Metodo_Pago: '', Tipo_Doc: r.document_type || 'boleta', Origen: `Gasto #${r.id}`
+      };
+    });
+
+    const pagParams = [];
+    let pagWhere = 'j.technician_paid = 1 AND j.technician_payment > 0';
+    if (from) { pagWhere += ' AND j.date >= ?'; pagParams.push(from); }
+    if (to) { pagWhere += ' AND j.date <= ?'; pagParams.push(to); }
+    const egresosPagos = (await db.prepare(`
+      SELECT j.id, j.date, u.display_name, j.technician_payment, j.admin_payment_method
+      FROM service_jobs j JOIN users u ON j.technician_id = u.id
+      WHERE ${pagWhere}
+      ORDER BY j.date ASC
+    `).all(...pagParams)).map(r => ({
+      Tipo: 'Egreso', Fecha: r.date, Descripcion: 'Pago a técnico', RUT: '',
+      Razon_Social: r.display_name, Monto_Neto: Number(r.technician_payment), IVA: 0,
+      Monto_Total: Number(r.technician_payment), Metodo_Pago: r.admin_payment_method || '',
+      Tipo_Doc: 'Honorarios', Origen: `Ticket #${r.id}`
+    }));
+
+    const all = [...ingresosData, ...egresosGastos, ...egresosPagos].sort((a, b) => a.Fecha.localeCompare(b.Fecha));
+    const headers = ['Tipo', 'Fecha', 'Descripcion', 'RUT', 'Razon_Social', 'Monto_Neto', 'IVA', 'Monto_Total', 'Metodo_Pago', 'Tipo_Doc', 'Origen'];
+
+    let totalIngresos = 0, totalEgresos = 0;
+    all.forEach(r => {
+      if (r.Tipo === 'Ingreso') totalIngresos += r.Monto_Total;
+      else totalEgresos += r.Monto_Total;
+    });
+
+    const resumenData = [
+      ['Concepto', 'Monto'],
+      ['Total Ingresos', totalIngresos],
+      ['Total Egresos (Gastos + Pagos)', totalEgresos],
+      ['Beneficio Neto', totalIngresos - totalEgresos]
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...all.map(r => headers.map(h => r[h] || ''))]);
+    XLSX.utils.book_append_sheet(wb, ws, 'Planilla SII');
+    
+    const wsResumen = XLSX.utils.aoa_to_sheet(resumenData);
+    XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen Contable');
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=planilla_contable_${new Date().toISOString().split('T')[0]}.xlsx`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('Export contable error:', err);
+    res.status(500).json({ error: 'Error al exportar planilla contable' });
+  }
+});
+
+router.get('/export-payments', async (req, res) => {
+  try {
+    const { from, to, user_id, status } = req.query;
+    let query = `
+      SELECT j.id as "ID", j.date as "Fecha", u.display_name as "Técnico", js.name as "Servicio",
+      j.client_name as "Cliente", j.client_type as "Tipo_Cliente", j.address_street as "Calle",
+      j.address_number as "Número", j.address_comuna as "Comuna", j.amount as "Cobro_Cliente",
+      j.technician_payment as "Pago_Técnico", j.admin_payment_method as "Método_Pago",
+      j.admin_payment_schedule as "Contado_Plazo", j.admin_payment_notes as "Observaciones_Pago",
+      j.ticket_status as "Estado", CASE WHEN j.technician_paid = 1 THEN 'Pagado' ELSE 'Pendiente' END as "Pago_Técnico_Estado",
+      j.created_at as "Fecha_Registro"
+      FROM service_jobs j
+      LEFT JOIN users u ON j.technician_id = u.id
+      LEFT JOIN job_services js ON j.job_service_id = js.id
+      WHERE 1=1
+    `;
+    const params = [];
+    if (from) { query += ' AND j.date >= ?'; params.push(from); }
+    if (to) { query += ' AND j.date <= ?'; params.push(to); }
+    if (user_id) { query += ' AND j.technician_id = ?'; params.push(parseInt(user_id)); }
+    if (status) { query += ' AND j.ticket_status = ?'; params.push(status); }
+    query += ' ORDER BY j.date DESC';
+    const data = await db.prepare(query).all(...params);
+
+    const XLSX = (await import('xlsx')).default;
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, 'Pagos');
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=pagos_tickets_${new Date().toISOString().split('T')[0]}.xlsx`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('Export payments error:', err);
+    res.status(500).json({ error: 'Error al exportar' });
+  }
+});
+
 router.get('/export', async (req, res) => {
   try {
     const { from, to, user_id, status } = req.query;

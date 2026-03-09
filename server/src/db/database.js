@@ -153,7 +153,7 @@ export async function initDatabase() {
       address_number TEXT DEFAULT '',
       address_comuna TEXT DEFAULT '',
       job_service_id INTEGER REFERENCES job_services(id),
-      payment_type TEXT NOT NULL,
+      payment_type TEXT DEFAULT 'contado',
       payment_method TEXT DEFAULT '',
       client_status TEXT DEFAULT 'pendiente_pago',
       amount NUMERIC(12,2) DEFAULT 0,
@@ -162,6 +162,11 @@ export async function initDatabase() {
       technician_paid_at TIMESTAMP,
       date TEXT NOT NULL,
       notes TEXT DEFAULT '',
+      ticket_status TEXT DEFAULT 'pendiente',
+      admin_payment_method TEXT DEFAULT '',
+      admin_payment_schedule TEXT DEFAULT '',
+      admin_payment_notes TEXT DEFAULT '',
+      is_garantia INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     )
@@ -176,24 +181,129 @@ export async function initDatabase() {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      type TEXT NOT NULL DEFAULT 'PAGO_ASIGNADO',
+      title TEXT DEFAULT '',
+      message TEXT DEFAULT '',
+      read_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS quotes (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      client_name TEXT NOT NULL,
+      client_rut TEXT DEFAULT '',
+      client_address TEXT DEFAULT '',
+      client_phone TEXT DEFAULT '',
+      client_email TEXT DEFAULT '',
+      services_details TEXT DEFAULT '[]',
+      subtotal NUMERIC(12,2) DEFAULT 0,
+      iva NUMERIC(12,2) DEFAULT 0,
+      total NUMERIC(12,2) DEFAULT 0,
+      terms_conditions TEXT DEFAULT '',
+      status TEXT DEFAULT 'pendiente_revision',
+      admin_notes TEXT DEFAULT '',
+      work_order_id INTEGER,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS work_order_service_types (
+      id SERIAL PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      active INTEGER DEFAULT 1,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS work_orders (
+      id SERIAL PRIMARY KEY,
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      client_name TEXT NOT NULL,
+      address TEXT NOT NULL,
+      background_info TEXT DEFAULT '',
+      contact_phone TEXT DEFAULT '',
+      attention_type TEXT NOT NULL,
+      service_type_id INTEGER REFERENCES work_order_service_types(id),
+      latitude NUMERIC(10, 6),
+      longitude NUMERIC(10, 6),
+      status TEXT DEFAULT 'asignada',
+      admin_notes TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS work_order_assignments (
+      id SERIAL PRIMARY KEY,
+      work_order_id INTEGER NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+      technician_id INTEGER NOT NULL REFERENCES users(id),
+      status TEXT DEFAULT 'pendiente',
+      read_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  const addCol = async (table, col, def) => {
+    try {
+      await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} ${def}`);
+    } catch (_) {}
+  };
+  await addCol('service_jobs', 'ticket_status', "TEXT DEFAULT 'pendiente'");
+  await addCol('service_jobs', 'admin_payment_method', 'TEXT DEFAULT \'\'');
+  await addCol('service_jobs', 'admin_payment_schedule', 'TEXT DEFAULT \'\'');
+  await addCol('service_jobs', 'admin_payment_notes', 'TEXT DEFAULT \'\'');
+  await addCol('service_jobs', 'is_garantia', 'INTEGER DEFAULT 0');
+  await addCol('service_jobs', 'client_phone', 'TEXT DEFAULT \'\'');
+  await addCol('service_jobs', 'payment_type', "TEXT DEFAULT 'contado'");
+
+  await addCol('quotes', 'folio', "TEXT DEFAULT ''");
+  await addCol('quotes', 'client_type', "TEXT DEFAULT 'RESIDENCIAL'");
+  await addCol('quotes', 'scope_covered', "TEXT DEFAULT ''");
+  await addCol('quotes', 'technical_scope', "TEXT DEFAULT ''");
+  await addCol('quotes', 'payment_modalities', "TEXT DEFAULT ''");
+  await addCol('quotes', 'expiration_days', "INTEGER DEFAULT 15");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS postventa_reminders (
+      id SERIAL PRIMARY KEY,
+      service_job_id INTEGER NOT NULL REFERENCES service_jobs(id) ON DELETE CASCADE,
+      scheduled_date TEXT NOT NULL,
+      status TEXT DEFAULT 'pendiente',
+      notes TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
   const userCount = await pool.query("SELECT COUNT(*) as count FROM users");
   if (parseInt(userCount.rows[0].count) === 0) {
-    const hashedAdmin = bcrypt.hashSync('administración', 10);
+    const hashedAdmin = bcrypt.hashSync('administracion', 10);
     const hashedTech = bcrypt.hashSync('Hidro2026', 10);
 
     await pool.query(
       "INSERT INTO users (username, password, display_name, role, must_change_password) VALUES ($1, $2, $3, $4, $5)",
-      ['administración', hashedAdmin, 'Administrador', 'admin', 0]
+      ['administracion', hashedAdmin, 'Administrador', 'admin', 0]
     );
 
     const technicians = [
-      ['german', 'German'], ['donar', 'Donar'], ['marelyn', 'Marelyn'],
-      ['susana', 'Susana'], ['invitado', 'Invitado']
+      ['german', 'German', 'tecnico'], ['donar', 'Donar', 'tecnico'], ['marelyn', 'Marelyn', 'tecnico'],
+      ['susana', 'Susana', 'tecnico'], ['invitado', 'Invitado', 'tecnico'],
+      ['ventas', 'Vendedor', 'ventas']
     ];
-    for (const [username, displayName] of technicians) {
+    for (const [username, displayName, role] of technicians) {
       await pool.query(
         "INSERT INTO users (username, password, display_name, role, must_change_password) VALUES ($1, $2, $3, $4, $5)",
-        [username, hashedTech, displayName, 'tecnico', 1]
+        [username, hashedTech, displayName, role || 'tecnico', 1]
       );
     }
     console.log('Usuarios iniciales creados.');
@@ -202,8 +312,8 @@ export async function initDatabase() {
   const svcCount = await pool.query("SELECT COUNT(*) as count FROM services");
   if (parseInt(svcCount.rows[0].count) === 0) {
     const defaultServices = [
-      'Destape de cañerías', 'Reparación de filtraciones', 'Instalación sanitaria',
-      'Mantención general', 'Emergencia', 'Inspección técnica', 'Otro'
+      'Destape de canerias', 'Reparacion de filtraciones', 'Instalacion sanitaria',
+      'Mantencion general', 'Emergencia', 'Inspeccion tecnica', 'Otro'
     ];
     for (const s of defaultServices) {
       await pool.query("INSERT INTO services (name) VALUES ($1)", [s]);
@@ -214,9 +324,9 @@ export async function initDatabase() {
   const jobSvcCount = await pool.query("SELECT COUNT(*) as count FROM job_services");
   if (parseInt(jobSvcCount.rows[0].count) === 0) {
     const defaultJobServices = [
-      'Destape de alcantarillado', 'Destape de desagüe', 'Destape de WC',
-      'Destape de cañerías', 'Reparación de filtraciones', 'Instalación sanitaria',
-      'Mantención general', 'Emergencia', 'Inspección técnica', 'Otro'
+      'Destape de alcantarillado', 'Destape de desague', 'Destape de WC',
+      'Destape de canerias', 'Reparacion de filtraciones', 'Instalacion sanitaria',
+      'Mantencion general', 'Emergencia', 'Inspeccion tecnica', 'Otro'
     ];
     for (const s of defaultJobServices) {
       try {

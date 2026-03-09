@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Eye, Trash2, Pencil, Camera } from 'lucide-react';
+import { Plus, Search, Eye, Trash2, Pencil, Camera, Send } from 'lucide-react';
 import { api, getUploadsUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { formatCurrency, formatDate } from '../utils/format';
+import { formatCurrency, formatDate, clientTypeLabel } from '../utils/format';
 
 function jobPhotoUrl(path: string) {
   if (!path) return '';
@@ -72,14 +72,23 @@ export default function ServiceJobs() {
 
       {summary && (
         <div className="grid grid-cols-2 gap-2">
-          <div className="bg-white rounded-xl p-3 shadow-sm border border-border-light">
-            <p className="text-xs text-text-secondary">Pendiente de cobro</p>
-            <p className="font-bold text-corporate-blue">{formatCurrency(Number(summary.pending || 0))}</p>
-          </div>
-          <div className="bg-white rounded-xl p-3 shadow-sm border border-border-light">
-            <p className="text-xs text-text-secondary">Cobrado</p>
-            <p className="font-bold text-green-600">{formatCurrency(Number(summary.paid || 0))}</p>
-          </div>
+          {isAdmin ? (
+            <>
+              <div className="bg-white rounded-xl p-3 shadow-sm border border-border-light">
+                <p className="text-xs text-text-secondary">Pendiente de cobro</p>
+                <p className="font-bold text-corporate-blue">{formatCurrency(Number(summary.pending || 0))}</p>
+              </div>
+              <div className="bg-white rounded-xl p-3 shadow-sm border border-border-light">
+                <p className="text-xs text-text-secondary">Pagado</p>
+                <p className="font-bold text-green-600">{formatCurrency(Number(summary.paid || 0))}</p>
+              </div>
+            </>
+            ) : (
+            <div className="bg-white rounded-xl p-3 shadow-sm border border-border-light col-span-2">
+              <p className="text-xs text-text-secondary">Mis servicios registrados</p>
+              <p className="font-bold text-corporate-blue">{summary.myTicketsCount || summary.count || 0}</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -132,9 +141,14 @@ export default function ServiceJobs() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-sm truncate">{job.client_name}</p>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                      {job.client_type === 'particular' ? 'Particular' : 'Empresa'}
+                      {clientTypeLabel(job.client_type)}
                     </span>
-                    {job.technician_paid === 1 && (
+                    {job.is_garantia === 1 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">
+                        Garantía
+                      </span>
+                    )}
+                    {isAdmin && job.technician_paid === 1 && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">
                         Pagado
                       </span>
@@ -147,14 +161,27 @@ export default function ServiceJobs() {
                     <p className="text-xs text-text-secondary truncate">{job.address_comuna}</p>
                   )}
                 </div>
-                <div className="text-right">
-                  <p className="font-bold text-sm">{formatCurrency(Number(job.amount || 0))}</p>
-                  {job.technician_payment > 0 && (
-                    <p className="text-xs text-corporate-blue font-medium">
-                      Cobro: {formatCurrency(Number(job.technician_payment))}
-                    </p>
-                  )}
-                </div>
+                {isAdmin && (
+                  <div className="text-right">
+                    <p className="font-bold text-sm">{formatCurrency(Number(job.amount || 0))}</p>
+                    {Number(job.technician_payment || 0) > 0 && (
+                      <p className="text-xs text-corporate-blue font-medium">
+                        Pago: {formatCurrency(Number(job.technician_payment))}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {!isAdmin && (
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                      job.is_garantia === 1 ? 'bg-gray-200 text-gray-700' :
+                      job.ticket_status === 'aprobado' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {job.is_garantia === 1 ? 'Garantía' :
+                       job.ticket_status === 'aprobado' ? 'Completado' : 'En revisión'}
+                    </span>
+                  </div>
+                )}
                 <div className="flex flex-col gap-1">
                   <button
                     onClick={() => setPreview(job)}
@@ -163,7 +190,7 @@ export default function ServiceJobs() {
                   >
                     <Eye size={18} />
                   </button>
-                  {!job.technician_paid && (
+                  {(isAdmin ? !job.technician_paid : job.ticket_status === 'pendiente') && (
                     <>
                       <button
                         onClick={() => navigate(`/servicios/editar/${job.id}`, { state: { job } })}
@@ -212,16 +239,18 @@ export default function ServiceJobs() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <p><span className="text-text-secondary">Cliente:</span> {preview.client_name}</p>
-                  <p><span className="text-text-secondary">Tipo:</span> {preview.client_type === 'particular' ? 'Particular' : 'Empresa'}</p>
+                  <p><span className="text-text-secondary">Tipo:</span> {clientTypeLabel(preview.client_type)}</p>
                   <p><span className="text-text-secondary">Servicio:</span> {preview.job_service_name}</p>
                   <p><span className="text-text-secondary">Fecha:</span> {formatDate(preview.date)}</p>
-                  <p><span className="text-text-secondary">Pago:</span> {preview.payment_type === 'contado' ? 'Al contado' : 'A crédito'}</p>
-                  <p><span className="text-text-secondary">Método:</span> {preview.payment_method === 'efectivo' ? 'Efectivo' : preview.payment_method === 'transferencia' ? 'Transferencia' : '-'}</p>
                   <p className="col-span-2"><span className="text-text-secondary">Dirección:</span> {[preview.address_street, preview.address_number, preview.address_comuna].filter(Boolean).join(', ') || '-'}</p>
                 </div>
-                <p className="font-bold text-corporate-blue">Monto: {formatCurrency(Number(preview.amount || 0))}</p>
-                {preview.technician_payment > 0 && (
-                  <p className="font-bold text-green-600">Tu cobro: {formatCurrency(Number(preview.technician_payment))}</p>
+                {isAdmin && (
+                  <>
+                    <p className="font-bold text-corporate-blue">Cobro cliente: {formatCurrency(Number(preview.amount || 0))}</p>
+                    {Number(preview.technician_payment || 0) > 0 && (
+                      <p className="font-bold text-green-600">Pago técnico: {formatCurrency(Number(preview.technician_payment))}</p>
+                    )}
+                  </>
                 )}
                 {preview.photos?.length > 0 && (
                   <div className="space-y-2">
@@ -232,6 +261,44 @@ export default function ServiceJobs() {
                       ))}
                     </div>
                   </div>
+                )}
+                {!isAdmin && (
+                  <button onClick={() => {
+                    const dir = [preview.address_street, preview.address_number, preview.address_comuna].filter(Boolean).join(', ') || '-';
+                    const materialsBlock = preview.materials?.length > 0
+                      ? '\n*Materiales usados:*\n' + preview.materials.map((m: any) =>
+                          `• ${m.nombre_material} × ${m.cantidad || 1}`
+                        ).join('\n')
+                      : '';
+                    const equipBlock = preview.equipment?.length > 0
+                      ? '\n*Equipos utilizados:*\n' + preview.equipment.map((e: any) =>
+                          `• ${e.name || e.equipment_id} × ${e.quantity || 1}`
+                        ).join('\n')
+                      : '';
+                    const notesBlock = preview.notes ? `\n*Notas:* ${preview.notes}` : '';
+                    const text = [
+                      `*INFORME TÉCNICO - Hidrourgencias*`,
+                      `Ticket #${preview.id}`,
+                      ``,
+                      `*Cliente:* ${preview.client_name}`,
+                      `*Tipo:* ${clientTypeLabel(preview.client_type)}`,
+                      `*RUT:* ${preview.client_rut || '-'}`,
+                      `*Servicio:* ${preview.job_service_name || '-'}`,
+                      `*Fecha:* ${formatDate(preview.date)}`,
+                      `*Dirección:* ${dir}`,
+                      materialsBlock,
+                      equipBlock,
+                      notesBlock
+                    ].filter(Boolean).join('\n');
+                    const openWa = (phoneRaw: string | undefined) => {
+                      const p = String(phoneRaw || '56940918672').replace(/\D/g, '');
+                      const num = p.startsWith('56') ? p : '56' + p;
+                      window.open(`https://wa.me/${num}?text=${encodeURIComponent(text)}`, '_blank');
+                    };
+                    api.getWhatsappNumber().then((r: any) => openWa(r?.whatsapp_number)).catch(() => openWa(undefined));
+                  }} className="w-full flex items-center justify-center gap-2 py-3 bg-[#25D366] text-white rounded-xl font-semibold">
+                    <Send size={18} /> Reporte de informe técnico
+                  </button>
                 )}
               </div>
             </motion.div>

@@ -11,6 +11,8 @@ import userRoutes from './routes/users.js';
 import ocrRoutes from './routes/ocr.js';
 import adminRoutes from './routes/admin.js';
 import jobsRoutes from './routes/jobs.js';
+import workOrdersRoutes from './routes/workOrders.js';
+import quotesRoutes from './routes/quotes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -28,6 +30,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/ocr', ocrRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/jobs', jobsRoutes);
+app.use('/api/work-orders', workOrdersRoutes);
+app.use('/api/quotes', quotesRoutes);
 
 app.get('/api/services', async (req, res) => {
   try {
