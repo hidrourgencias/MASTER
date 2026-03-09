@@ -61,9 +61,7 @@ export default function EditServiceJob() {
   function handleAddPhoto(type: string, file: File) {
     const reader = new FileReader();
     reader.onload = (e) => {
-      if (e.target?.result) {
-        setNewPhotos(prev => ({ ...prev, [type]: { file, preview: e.target!.result as string } }));
-      }
+      setNewPhotos(prev => ({ ...prev, [type]: e.target?.result ? { file, preview: e.target.result as string } : null as any }));
     };
     reader.readAsDataURL(file);
   }
@@ -253,7 +251,7 @@ export default function EditServiceJob() {
               <input ref={(el: HTMLInputElement | null) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
                 onChange={e => {
                   if (e.target.files?.[0]) handleAddPhoto(type, e.target.files[0]);
-                  if (e.target) e.target.value = '';
+                  e.target.value = '';
                 }} />
             </div>
           ))}
