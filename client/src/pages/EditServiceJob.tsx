@@ -253,7 +253,7 @@ export default function EditServiceJob() {
               <input ref={(el: HTMLInputElement | null) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
                 onChange={e => {
                   if (e.target.files?.[0]) handleAddPhoto(type, e.target.files[0]);
-                  e.target.value = '';
+                  if (e.target) e.target.value = '';
                 }} />
             </div>
           ))}
