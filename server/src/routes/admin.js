@@ -89,7 +89,7 @@ router.get('/export-contable', async (req, res) => {
       WHERE ${expWhere}
       ORDER BY e.date ASC
     `).all(...expParams)).map(r => {
-      const isFactura = String(r.document_type || '').toLowerCase() === 'factura' || r.client_type === 'EMPRESA';
+      const isFactura = String(r.document_type || '').toLowerCase() === 'factura';
       const total = Number(r.amount);
       const neto = isFactura ? Math.round(total / 1.19) : total;
       const iva = isFactura ? Math.round(total - neto) : 0;
