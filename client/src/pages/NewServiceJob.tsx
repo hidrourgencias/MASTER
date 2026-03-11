@@ -252,7 +252,7 @@ export default function NewServiceJob() {
           <h2 className="font-semibold text-sm text-amber-800 flex items-center gap-2">
             <Camera size={18} /> Fotografías obligatorias *
           </h2>
-          <p className="text-xs text-amber-700">Sin las 3 fotos no se puede gestionar el ticket.</p>
+          <p className="text-xs text-amber-700">Se requiere al menos 1 fotografía obligatoria para gestionar el ticket.</p>
           {(['inicial', 'durante', 'final'] as const).map(type => (
             <div key={type} className="space-y-1">
               <label className="block text-xs font-medium text-amber-800">{PHOTO_LABELS[type]}</label>

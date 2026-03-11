@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Droplets, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Droplets, Eye, EyeOff, Loader2, Settings } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+
+const DEFAULT_API = 'https://hidrourgencias.onrender.com';
+const isCapacitor = !!(window as any).Capacitor; // APK: no mostrar "Configurar servidor"
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -10,6 +13,8 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showServerConfig, setShowServerConfig] = useState(false);
+  const [serverUrl, setServerUrl] = useState(() => localStorage.getItem('server_url') || DEFAULT_API);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -25,17 +30,31 @@ export default function Login() {
         navigate('/');
       }
     } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesión');
+      const msg = err?.message || '';
+      if (/fetch|network|failed to fetch|networkerror/i.test(msg) || msg === '') {
+        setError('No se pudo conectar al servidor. Verifique su conexión a internet y que el servidor esté activo.');
+      } else {
+        setError(msg || 'Error al iniciar sesión');
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const saveServerUrl = () => {
+    const url = serverUrl.trim().replace(/\/api\/?$/, '');
+    if (url) {
+      localStorage.setItem('server_url', url);
+      setError('');
+      setShowServerConfig(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-corporate-blue to-[#001a33] flex items-center justify-center p-4">
+    <div className="min-h-[100dvh] min-h-screen bg-gradient-to-br from-corporate-blue to-[#001a33] flex items-center justify-center p-4 overflow-y-auto safe-area-top safe-area-bottom">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-sm"
+        className="w-full max-w-sm my-4"
       >
         <div className="text-center mb-8">
           <motion.div
@@ -98,8 +117,38 @@ export default function Login() {
           </button>
 
           <p className="text-xs text-center text-text-secondary mt-2">
-            Primer acceso: contraseña <span className="font-mono font-medium">Hidro2026</span>
+            Primer acceso técnicos: contraseña <span className="font-mono font-medium">Hidro2026</span>
           </p>
+
+          {!isCapacitor && (
+          <>
+          <button
+            type="button"
+            onClick={() => setShowServerConfig(!showServerConfig)}
+            className="flex items-center gap-1 text-xs text-text-secondary hover:text-corporate-blue mx-auto mt-2"
+          >
+            <Settings size={14} /> Configurar servidor
+          </button>
+          {showServerConfig && (
+            <div className="mt-3 p-3 bg-gray-50 rounded-xl space-y-2 border border-border-light">
+              <input
+                type="url"
+                value={serverUrl}
+                onChange={e => setServerUrl(e.target.value)}
+                placeholder="https://servidor.ejemplo.com"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-border-light"
+              />
+              <button
+                type="button"
+                onClick={saveServerUrl}
+                className="w-full py-2 text-sm bg-corporate-blue text-white rounded-lg"
+              >
+                Guardar URL
+              </button>
+            </div>
+          )}
+          </>
+          )}
         </motion.form>
       </motion.div>
     </div>

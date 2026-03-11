@@ -149,8 +149,8 @@ export async function initDatabase() {
       client_type TEXT NOT NULL,
       client_name TEXT NOT NULL,
       client_rut TEXT DEFAULT '',
+      client_phone TEXT DEFAULT '',
       address_street TEXT DEFAULT '',
-      address_number TEXT DEFAULT '',
       address_comuna TEXT DEFAULT '',
       job_service_id INTEGER REFERENCES job_services(id),
       payment_type TEXT DEFAULT 'contado',
@@ -202,11 +202,17 @@ export async function initDatabase() {
       client_address TEXT DEFAULT '',
       client_phone TEXT DEFAULT '',
       client_email TEXT DEFAULT '',
+      client_type TEXT DEFAULT 'RESIDENCIAL',
+      folio TEXT DEFAULT '',
       services_details TEXT DEFAULT '[]',
       subtotal NUMERIC(12,2) DEFAULT 0,
       iva NUMERIC(12,2) DEFAULT 0,
       total NUMERIC(12,2) DEFAULT 0,
       terms_conditions TEXT DEFAULT '',
+      scope_covered TEXT DEFAULT '',
+      technical_scope TEXT DEFAULT '',
+      payment_modalities TEXT DEFAULT '',
+      expiration_days INTEGER DEFAULT 15,
       status TEXT DEFAULT 'pendiente_revision',
       admin_notes TEXT DEFAULT '',
       work_order_id INTEGER,
@@ -259,13 +265,13 @@ export async function initDatabase() {
       await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} ${def}`);
     } catch (_) {}
   };
-  await addCol('service_jobs', 'ticket_status', "TEXT DEFAULT 'pendiente'");
-  await addCol('service_jobs', 'admin_payment_method', 'TEXT DEFAULT \'\'');
-  await addCol('service_jobs', 'admin_payment_schedule', 'TEXT DEFAULT \'\'');
-  await addCol('service_jobs', 'admin_payment_notes', 'TEXT DEFAULT \'\'');
-  await addCol('service_jobs', 'is_garantia', 'INTEGER DEFAULT 0');
+  // client_phone no está en CREATE TABLE; las demás columnas de service_jobs ya están definidas
   await addCol('service_jobs', 'client_phone', 'TEXT DEFAULT \'\'');
-  await addCol('service_jobs', 'payment_type', "TEXT DEFAULT 'contado'");
+
+  await addCol('work_order_assignments', 'sent_at', 'TIMESTAMP');
+  await addCol('work_orders', 'address', 'TEXT DEFAULT \'\'');
+  await addCol('work_orders', 'schedule', 'TEXT DEFAULT \'\'');
+  await addCol('work_orders', 'client_phone', 'TEXT DEFAULT \'\'');
 
   await addCol('quotes', 'folio', "TEXT DEFAULT ''");
   await addCol('quotes', 'client_type', "TEXT DEFAULT 'RESIDENCIAL'");
@@ -273,6 +279,16 @@ export async function initDatabase() {
   await addCol('quotes', 'technical_scope', "TEXT DEFAULT ''");
   await addCol('quotes', 'payment_modalities', "TEXT DEFAULT ''");
   await addCol('quotes', 'expiration_days', "INTEGER DEFAULT 15");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS equipment_catalog (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'maquinaria',
+      active INTEGER DEFAULT 1,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS postventa_reminders (
@@ -307,6 +323,32 @@ export async function initDatabase() {
       );
     }
     console.log('Usuarios iniciales creados.');
+  } else {
+    // Asegurar que administracion y ventas existan (para migraciones o DB con datos previos)
+    // Migrar administración (con tilde) a administracion si existe el viejo
+    const admOld = await pool.query("SELECT id FROM users WHERE username = 'administración' LIMIT 1");
+    if (admOld.rows.length > 0) {
+      await pool.query("UPDATE users SET username = 'administracion' WHERE username = 'administración'");
+      console.log('Usuario administración migrado a administracion.');
+    }
+    const adm = await pool.query("SELECT id FROM users WHERE username = 'administracion' LIMIT 1");
+    if (adm.rows.length === 0) {
+      const hashedAdmin = bcrypt.hashSync('administracion', 10);
+      await pool.query(
+        "INSERT INTO users (username, password, display_name, role, must_change_password) VALUES ($1, $2, $3, $4, $5)",
+        ['administracion', hashedAdmin, 'Administrador', 'admin', 0]
+      );
+      console.log('Usuario administracion creado.');
+    }
+    const vent = await pool.query("SELECT id FROM users WHERE username = 'ventas' LIMIT 1");
+    if (vent.rows.length === 0) {
+      const hashedTech = bcrypt.hashSync('Hidro2026', 10);
+      await pool.query(
+        "INSERT INTO users (username, password, display_name, role, must_change_password) VALUES ($1, $2, $3, $4, $5)",
+        ['ventas', hashedTech, 'Vendedor', 'ventas', 1]
+      );
+      console.log('Usuario ventas creado.');
+    }
   }
 
   const svcCount = await pool.query("SELECT COUNT(*) as count FROM services");

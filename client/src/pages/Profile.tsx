@@ -44,7 +44,7 @@ export default function Profile() {
       await api.receiveWorkOrderAssignment(assignmentId);
       setWorkOrders(prev => prev.map(wo => ({
         ...wo,
-        assignments: wo.assignments?.map((a: any) => a.id === assignmentId ? { ...a, received_at: new Date().toISOString() } : a)
+        assignments: wo.assignments?.map((a: any) => a.id === assignmentId ? { ...a, read_at: new Date().toISOString() } : a)
       })));
     } catch (e: any) {
       alert(e.message || 'Error');
@@ -169,7 +169,7 @@ export default function Profile() {
             <ClipboardCheck size={16} /> Órdenes de trabajo
           </h3>
           {workOrders.flatMap(wo => (wo.assignments || [])
-            .filter((a: any) => a.technician_id === user?.id && !a.received_at)
+            .filter((a: any) => a.technician_id === user?.id && !a.read_at)
             .map((a: any) => (
               <div key={a.id} className="p-3 rounded-xl border bg-amber-50 border-amber-200">
                 <p className="font-medium text-sm">{wo.client_name} · {ATTENTION_LABELS[wo.attention_type] || wo.attention_type}</p>

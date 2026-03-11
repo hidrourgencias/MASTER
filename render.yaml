@@ -1,0 +1,27 @@
+# Blueprint para desplegar Hidrourgencias en Render
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    runtime: node
+    name: hidrourgencias
+
+    # Comando de compilación: instala dependencias y construye cliente + servidor
+    buildCommand: npm install && npm run build
+
+    # Comando de inicio: arranca el servidor Express
+    startCommand: npm start
+
+    # Health check: Render verifica /api/health para saber cuándo el servidor está listo
+    healthCheckPath: /api/health
+
+    # Variables de entorno
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # Ingresar en Dashboard: URL de Neon (postgresql://...)
+      - key: JWT_SECRET
+        generateValue: true  # Render genera una clave secreta automáticamente
+      - key: GEMINI_API_KEY
+        sync: false  # Opcional: para OCR con IA
+      - key: NODE_ENV
+        value: production

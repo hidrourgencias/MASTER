@@ -17,12 +17,18 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   background-color: var(--color-bg-main);
   color: var(--color-text-primary);
   min-height: 100dvh;
   overscroll-behavior: none;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-top: env(safe-area-inset-top, 0);
 }
 
 input, select, textarea {
@@ -36,6 +42,19 @@ input, select, textarea {
   background: #CBD5E0;
   border-radius: 4px;
 }
+
+/* Ocultar scrollbar en tabs horizontales manteniendo scroll */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Safe-area para dispositivos con notch */
+.safe-area-top { padding-top: env(safe-area-inset-top, 0); }
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0); }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }

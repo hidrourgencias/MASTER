@@ -1,18 +1,15 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-// Servidor estable (sin borrar datos): usar CAPACITOR_SERVER_URL con tu URL.
-// Ej. servidor en São Paulo/Brasil: $env:CAPACITOR_SERVER_URL="https://tu-servidor.com"
-// Render free hace spin-down tras 15 min de inactividad.
-const serverUrl = process.env.CAPACITOR_SERVER_URL || 'https://hidrourgencias.onrender.com';
+// La APK usa la app empaquetada localmente (dist). Solo server.url se usa
+// para desarrollo en vivo; en producción la app va incluida en la APK.
+const serverUrl = process.env.CAPACITOR_SERVER_URL;
 
 const config: CapacitorConfig = {
   appId: 'cl.hidrourgencias.rendiciones',
   appName: 'Hidrourgencias',
   webDir: 'dist',
-  server: {
-    url: serverUrl,
-    cleartext: true
-  },
+  // Solo cargar desde URL remota si se define (para desarrollo). En producción usa dist empaquetado.
+  ...(serverUrl ? { server: { url: serverUrl, cleartext: true } } : {}),
   android: {
     allowMixedContent: true
   },

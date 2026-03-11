@@ -279,4 +279,36 @@ router.put('/settings', async (req, res) => {
   }
 });
 
+// Equipment (maquinaria / EPP / materiales)
+router.get('/equipment', async (req, res) => {
+  try {
+    const rows = await db.prepare('SELECT * FROM equipment_catalog WHERE active = 1 ORDER BY category, name').all();
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener equipos' });
+  }
+});
+
+router.post('/equipment', async (req, res) => {
+  try {
+    const { name, category } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Nombre requerido' });
+    const cat = (category || 'maquinaria').trim();
+    await db.prepare('INSERT INTO equipment_catalog (name, category) VALUES (?, ?)').run(name.trim(), cat);
+    const row = await db.prepare('SELECT * FROM equipment_catalog ORDER BY id DESC LIMIT 1').get();
+    res.status(201).json(row);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al crear equipo' });
+  }
+});
+
+router.delete('/equipment/:id', async (req, res) => {
+  try {
+    await db.prepare('UPDATE equipment_catalog SET active = 0 WHERE id = ?').run(req.params.id);
+    res.json({ message: 'Equipo desactivado' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al eliminar' });
+  }
+});
+
 export default router;

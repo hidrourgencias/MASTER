@@ -21,4 +21,9 @@ iniciar.js
 package-lock.json
 C-Users-Alumno-*/
 c-Users-Alumno-*/
-render.yaml
+
+# Archivos de documentos (evitar subir cotizaciones/informes al repo)
+*.pdf
+*.pptx
+*.xlsx
+*.lnk

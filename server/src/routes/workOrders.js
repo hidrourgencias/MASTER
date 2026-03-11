@@ -46,6 +46,7 @@ router.delete('/service-types/:id', adminMiddleware, async (req, res) => {
 
 router.get('/notifications', async (req, res) => {
   try {
+    if (!req.user?.id) return res.status(401).json({ error: 'No autorizado' });
     const rows = await db.prepare(`
       SELECT id, type, title, message, read_at, created_at
       FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50
@@ -185,7 +186,7 @@ router.put('/assignments/:assignmentId/receive', async (req, res) => {
     if (!a) return res.status(404).json({ error: 'No encontrado' });
     if (a.technician_id !== req.user.id) return res.status(403).json({ error: 'Sin permisos' });
 
-    await db.prepare('UPDATE work_order_assignments SET received_at = NOW() WHERE id = ?').run(assignmentId);
+    await db.prepare('UPDATE work_order_assignments SET read_at = NOW() WHERE id = ?').run(assignmentId);
     const wo = await db.prepare(`
       SELECT wo.*, wost.name as service_type_name
       FROM work_orders wo

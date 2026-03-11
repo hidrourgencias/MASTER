@@ -1,12 +1,22 @@
 const isCapacitor = !!(window as any).Capacitor;
 
+// URL del servidor backend (Render). En Capacitor la app va empaquetada; la API está en la nube.
+const DEFAULT_API_BASE = 'https://hidrourgencias.onrender.com/api';
+
+const DEFAULT_SERVER = 'https://hidrourgencias.onrender.com';
+
 function getBaseUrl(): string {
   const stored = localStorage.getItem('server_url');
-  if (stored) return stored + '/api';
-  if (isCapacitor) {
-    return (localStorage.getItem('server_url') || window.location.origin) + '/api';
-  }
+  if (stored) return stored.replace(/\/$/, '') + '/api';
+  if (isCapacitor) return DEFAULT_API_BASE;
   return '/api';
+}
+
+function getServerOrigin(): string {
+  const stored = localStorage.getItem('server_url');
+  if (stored) return stored.replace(/\/$/, '');
+  if (isCapacitor) return DEFAULT_SERVER;
+  return '';
 }
 
 function getToken(): string | null {
@@ -29,7 +39,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   if (res.status === 401) {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    window.location.href = '/login';
+    // HashRouter: hash sin # extra para evitar ##/login
+    window.location.hash = '/login';
     throw new Error('No autorizado');
   }
 
@@ -46,8 +57,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 export function getUploadsUrl(filename: string): string {
   const stored = localStorage.getItem('server_url');
-  if (stored) return stored + '/uploads/' + filename;
-  if (isCapacitor) return window.location.origin + '/uploads/' + filename;
+  if (stored) return stored.replace(/\/$/, '') + '/uploads/' + filename;
+  if (isCapacitor) return 'https://hidrourgencias.onrender.com/uploads/' + filename;
   return '/uploads/' + filename;
 }
 
@@ -139,7 +150,7 @@ export const api = {
 
   getWorkOrders: () => request<any[]>('/work-orders'),
   createWorkOrder: (data: any) => request<any>('/work-orders', { method: 'POST', body: JSON.stringify(data) }),
-  sendWorkOrder: (id: number) => request<any>(`/work-orders/${id}/send`, { method: 'POST' }),
+  sendWorkOrder: (id: number) => request<any>(`/work-orders/${id}/send`, { method: 'PUT' }),
   getWorkOrderServiceTypes: () => request<any[]>('/work-orders/service-types'),
   createWorkOrderServiceType: (name: string) => request<any>('/work-orders/service-types', { method: 'POST', body: JSON.stringify({ name }) }),
   getWorkOrderAttentionTypes: () => request<any[]>('/work-orders/attention-types'),
@@ -148,10 +159,12 @@ export const api = {
     request<any>(`/work-orders/assignments/${assignmentId}/receive`, { method: 'PUT' }),
   escalateWorkOrderAssignment: (assignmentId: number) =>
     request<any>(`/work-orders/assignments/${assignmentId}/escalate`, { method: 'PUT' }),
-  getEquipmentCatalog: () => Promise.resolve([] as any[]),
-  getAdminEquipment: () => Promise.resolve([] as any[]),
-  createEquipment: (_name: string, _category: string) => Promise.resolve({} as any),
-  deleteEquipment: (_id: number) => Promise.resolve({} as any),
+  getEquipmentCatalog: () => request<any[]>('/admin/equipment'),
+  getAdminEquipment: () => request<any[]>('/admin/equipment'),
+  createEquipment: (name: string, category: string) =>
+    request<any>('/admin/equipment', { method: 'POST', body: JSON.stringify({ name, category }) }),
+  deleteEquipment: (id: number) =>
+    request<any>(`/admin/equipment/${id}`, { method: 'DELETE' }),
   
   schedulePostventa: (jobId: number) => request<any>(`/jobs/${jobId}/postventa`, { method: 'POST' }),
 
@@ -161,7 +174,7 @@ export const api = {
   exportExcel: async (params: Record<string, string>) => {
     const token = getToken();
     const query = new URLSearchParams(params).toString();
-    const baseOrigin = localStorage.getItem('server_url') || '';
+    const baseOrigin = getServerOrigin();
     const res = await fetch(`${baseOrigin}/api/admin/export?${query}`, {
       headers: { Authorization: `Bearer ${token}` } as any
     });
@@ -178,7 +191,7 @@ export const api = {
   exportPaymentsExcel: async (params: Record<string, string> = {}) => {
     const token = getToken();
     const query = new URLSearchParams(params).toString();
-    const baseOrigin = localStorage.getItem('server_url') || '';
+    const baseOrigin = getServerOrigin();
     const res = await fetch(`${baseOrigin}/api/admin/export-payments?${query}`, {
       headers: { Authorization: `Bearer ${token}` } as any
     });
@@ -195,7 +208,7 @@ export const api = {
   exportContableExcel: async (params: Record<string, string> = {}) => {
     const token = getToken();
     const query = new URLSearchParams(params).toString();
-    const baseOrigin = localStorage.getItem('server_url') || '';
+    const baseOrigin = getServerOrigin();
     const res = await fetch(`${baseOrigin}/api/admin/export-contable?${query}`, {
       headers: { Authorization: `Bearer ${token}` } as any
     });

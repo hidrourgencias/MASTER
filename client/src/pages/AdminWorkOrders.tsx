@@ -120,7 +120,7 @@ export default function AdminWorkOrders() {
   function getCountdown(assignment: any) {
     const sent = assignment.sent_at || assignment.created_at;
     const elapsed = getElapsedMin(sent);
-    if (assignment.received_at) return null;
+    if (assignment.read_at) return null;
     if (elapsed >= 10) return { min: 0, overdue: true };
     return { min: Math.max(0, Math.ceil(10 - elapsed)), overdue: false };
   }
@@ -248,7 +248,7 @@ export default function AdminWorkOrders() {
                   <div className="space-y-2">
                     {wo.assignments?.map((a: any) => {
                       const cd = getCountdown(a);
-                      const received = !!a.received_at;
+                      const received = !!a.read_at;
                       return (
                         <div key={a.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
                           <div className="flex items-center gap-3">

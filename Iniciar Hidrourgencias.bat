@@ -8,6 +8,6 @@ echo.
 echo Iniciando servidor y tunel a internet...
 echo NO CIERRE esta ventana mientras use la app.
 echo.
-cd /d "C:\Users\Alumno\Desktop\aplicacion"
+cd /d "%~dp0"
 node iniciar.js
 pause

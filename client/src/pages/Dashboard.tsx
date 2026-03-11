@@ -29,7 +29,7 @@ export default function Dashboard() {
   }
 
   const pendingOrders = workOrders.filter((wo: any) =>
-    wo.assignments?.some((a: any) => a.technician_id === user?.id && !a.received_at)
+    wo.assignments?.some((a: any) => a.technician_id === user?.id && !a.read_at)
   );
 
   if (loading) {

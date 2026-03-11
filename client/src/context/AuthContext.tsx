@@ -59,9 +59,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Refrescar usuario cuando hay token (sesión previa o tras login)
   useEffect(() => {
-    if (token) refreshUser();
-  }, []);
+    if (token) {
+      refreshUser().catch(() => { /* logout ya manejado en refreshUser */ });
+    }
+  }, [token]);
 
   return (
     <AuthContext.Provider value={{ user, token, login, logout, refreshUser, isAdmin: user?.role === 'admin', isVentas: user?.role === 'ventas' || user?.role === 'admin' }}>

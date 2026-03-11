@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Receipt, BarChart3, Shield, User, Menu, X, LogOut, Settings, FileText, Phone, Wrench, Briefcase, DollarSign, ClipboardList, Send, FileSignature } from 'lucide-react';
+import { Home, Receipt, BarChart3, Shield, User, Menu, X, LogOut, Settings, FileText, Phone, Wrench, Briefcase, DollarSign, ClipboardList, Send, FileSignature, ClipboardCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type AppModule = 'gastos' | 'ordenes' | 'ventas';
@@ -46,25 +46,25 @@ export default function Layout() {
   if (activeModule === 'ventas') navItems = ventasNavItems;
 
   return (
-    <div className="min-h-screen bg-bg-main flex flex-col">
-      {/* Module Tabs */}
-      <div className="bg-white border-b border-border-light flex overflow-x-auto no-scrollbar">
+    <div className="min-h-[100dvh] min-h-screen bg-bg-main flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      {/* Module Tabs - compactos en móvil */}
+      <div className="bg-white border-b border-border-light flex overflow-x-auto no-scrollbar shrink-0 flex-shrink-0">
         <button
           onClick={() => navigate('/gastos')}
-          className={`px-4 py-3 whitespace-nowrap text-sm font-semibold transition ${activeModule === 'gastos' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
+          className={`px-3 py-2 sm:px-4 sm:py-3 whitespace-nowrap text-xs sm:text-sm font-semibold transition shrink-0 ${activeModule === 'gastos' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
         >
           Gastos
         </button>
         <button
           onClick={() => navigate('/')}
-          className={`px-4 py-3 whitespace-nowrap text-sm font-semibold transition ${activeModule === 'ordenes' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
+          className={`px-3 py-2 sm:px-4 sm:py-3 whitespace-nowrap text-xs sm:text-sm font-semibold transition shrink-0 ${activeModule === 'ordenes' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
         >
           Órdenes
         </button>
         {isVentas && (
           <button
             onClick={() => navigate('/cotizaciones')}
-            className={`px-4 py-3 whitespace-nowrap text-sm font-semibold transition ${activeModule === 'ventas' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
+            className={`px-3 py-2 sm:px-4 sm:py-3 whitespace-nowrap text-xs sm:text-sm font-semibold transition shrink-0 ${activeModule === 'ventas' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
           >
             Ventas
           </button>
@@ -72,7 +72,7 @@ export default function Layout() {
       </div>
 
       {/* Header */}
-      <header className="bg-corporate-blue text-white px-4 py-2 flex items-center justify-between shadow sticky top-0 z-40">
+      <header className="bg-corporate-blue text-white px-4 py-2 flex items-center justify-between shadow sticky top-0 z-40 shrink-0">
         <button onClick={() => setDrawerOpen(true)} className="p-1 hover:bg-white/10 rounded-lg transition">
           <Menu size={22} />
         </button>
@@ -129,7 +129,7 @@ export default function Layout() {
                     <DrawerLink to="/admin/equipos" icon={Briefcase} label="Equipos / EPP" onClick={() => setDrawerOpen(false)} />
                     <DrawerLink to="/admin/servicios" icon={ClipboardList} label="Servicios (Gastos)" onClick={() => setDrawerOpen(false)} />
                     <DrawerLink to="/admin/configuracion" icon={Settings} label="Configuración" onClick={() => setDrawerOpen(false)} />
-                    <DrawerLink to="/admin/auditoria" icon={FileText} label="Auditoría" onClick={() => setDrawerOpen(false)} />
+                    <DrawerLink to="/admin/auditoria" icon={ClipboardCheck} label="Auditoría" onClick={() => setDrawerOpen(false)} />
                   </>
                 )}
                 <DrawerLink to="/perfil" icon={User} label="Perfil" onClick={() => setDrawerOpen(false)} />
@@ -145,31 +145,31 @@ export default function Layout() {
         )}
       </AnimatePresence>
 
-      {/* Content */}
-      <main className="flex-1 pb-20 overflow-y-auto">
+      {/* Content - espacio extra para barra inferior y safe-area */}
+      <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pb-[calc(4rem+env(safe-area-inset-bottom,0px))]">
         <Outlet />
       </main>
 
-      {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-border-light flex justify-around py-2 z-40 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+      {/* Bottom Navigation - con safe-area para notches */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-border-light flex justify-around items-stretch z-40 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))', paddingTop: '0.5rem' }}>
         {navItems.map(({ to, icon: Icon, label }: any) => (
           <NavLink
             key={to}
             to={to}
             end={to === '/' || to === '/gastos'}
             className={({ isActive }) =>
-              `flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg transition text-xs ${isActive ? 'text-corporate-light font-semibold' : 'text-text-secondary hover:text-corporate-blue'}`
+              `flex flex-col items-center justify-center gap-0.5 px-2 sm:px-3 py-1 rounded-lg transition text-[10px] sm:text-xs min-w-0 flex-1 ${isActive ? 'text-corporate-light font-semibold' : 'text-text-secondary hover:text-corporate-blue'}`
             }
           >
-            <Icon size={20} />
-            <span>{label}</span>
+            <Icon size={18} className="shrink-0" />
+            <span className="truncate max-w-full">{label}</span>
           </NavLink>
         ))}
         <NavLink to="/perfil" className={({ isActive }) =>
-          `flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg transition text-xs ${isActive ? 'text-corporate-light font-semibold' : 'text-text-secondary hover:text-corporate-blue'}`
+          `flex flex-col items-center justify-center gap-0.5 px-2 sm:px-3 py-1 rounded-lg transition text-[10px] sm:text-xs min-w-0 flex-1 ${isActive ? 'text-corporate-light font-semibold' : 'text-text-secondary hover:text-corporate-blue'}`
         }>
-          <User size={20} />
-          <span>Perfil</span>
+          <User size={18} className="shrink-0" />
+          <span className="truncate max-w-full">Perfil</span>
         </NavLink>
       </nav>
     </div>
