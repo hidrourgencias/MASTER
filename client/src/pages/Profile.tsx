@@ -13,7 +13,8 @@ export default function Profile() {
   const { user, logout, refreshUser, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    display_name: '', rut: '', bank_name: '', bank_account_type: '', bank_account_number: ''
+    display_name: '', rut: '', bank_name: '', bank_account_type: '', bank_account_number: '',
+    whatsapp_phone: '', address: '', afp: '', health_system: '', health_organization: '', emergency_contact_phone: ''
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -27,7 +28,13 @@ export default function Profile() {
         rut: user.rut || '',
         bank_name: user.bank_name || '',
         bank_account_type: user.bank_account_type || '',
-        bank_account_number: user.bank_account_number || ''
+        bank_account_number: user.bank_account_number || '',
+        whatsapp_phone: user.whatsapp_phone || '',
+        address: user.address || '',
+        afp: user.afp || '',
+        health_system: user.health_system || '',
+        health_organization: user.health_organization || '',
+        emergency_contact_phone: user.emergency_contact_phone || ''
       });
     }
   }, [user]);
@@ -89,12 +96,62 @@ export default function Profile() {
         </div>
 
         <div>
+          <label className="block text-xs font-medium text-text-secondary mb-1">WhatsApp</label>
+          <input type="tel" value={form.whatsapp_phone} onChange={e => setForm(p => ({ ...p, whatsapp_phone: e.target.value }))}
+            className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm focus:ring-2 focus:ring-corporate-light outline-none"
+            placeholder="+56 9 1234 5678" />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-text-secondary mb-1">Dirección</label>
+          <input type="text" value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))}
+            className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm focus:ring-2 focus:ring-corporate-light outline-none"
+            placeholder="Dirección" />
+        </div>
+
+        <div>
           <label className="block text-xs font-medium text-text-secondary mb-1">RUT</label>
           <input type="text" value={form.rut} onChange={e => setForm(p => ({ ...p, rut: e.target.value }))}
             className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm focus:ring-2 focus:ring-corporate-light outline-none"
             placeholder="XX.XXX.XXX-X" />
         </div>
 
+        <div>
+          <label className="block text-xs font-medium text-text-secondary mb-1">AFP</label>
+          <input type="text" value={form.afp} onChange={e => setForm(p => ({ ...p, afp: e.target.value }))}
+            className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm focus:ring-2 focus:ring-corporate-light outline-none"
+            placeholder="Ej: Habitat, Capital" />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-text-secondary mb-1">Sistema de salud</label>
+          <select value={form.health_system} onChange={e => setForm(p => ({ ...p, health_system: e.target.value }))}
+            className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm bg-white focus:ring-2 focus:ring-corporate-light outline-none">
+            <option value="">--</option>
+            <option value="fonasa">Fonasa</option>
+            <option value="isapre">Isapre</option>
+          </select>
+        </div>
+
+        {form.health_system === 'isapre' && (
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Isapre</label>
+            <input type="text" value={form.health_organization} onChange={e => setForm(p => ({ ...p, health_organization: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm focus:ring-2 focus:ring-corporate-light outline-none"
+              placeholder="Nombre Isapre" />
+          </div>
+        )}
+
+        <div>
+          <label className="block text-xs font-medium text-text-secondary mb-1">Contacto emergencia</label>
+          <input type="tel" value={form.emergency_contact_phone} onChange={e => setForm(p => ({ ...p, emergency_contact_phone: e.target.value }))}
+            className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm focus:ring-2 focus:ring-corporate-light outline-none"
+            placeholder="+56 9 1234 5678" />
+        </div>
+
+        <h3 className="font-semibold text-sm text-corporate-blue flex items-center gap-2 pt-2">
+          <CreditCard size={16} /> Cuenta para pagos
+        </h3>
         <div>
           <label className="block text-xs font-medium text-text-secondary mb-1">Banco</label>
           <select value={form.bank_name} onChange={e => setForm(p => ({ ...p, bank_name: e.target.value }))}

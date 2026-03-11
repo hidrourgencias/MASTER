@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Camera, ArrowLeft, X, Loader2, AlertCircle, Send } from 'lucide-react';
+import { Camera, ArrowLeft, X, Loader2, AlertCircle, Send, Image } from 'lucide-react';
 import { api } from '../services/api';
 import { todayISO } from '../utils/format';
+import { pickPhoto } from '../utils/photoPicker';
 
 const PHOTO_LABELS: Record<string, string> = {
   inicial: '1. Inicial (antes de comenzar)',
@@ -13,7 +14,6 @@ const PHOTO_LABELS: Record<string, string> = {
 
 export default function NewServiceJob() {
   const navigate = useNavigate();
-  const cameraRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const [form, setForm] = useState({
     client_type: 'PARTICULAR',
@@ -265,7 +265,7 @@ export default function NewServiceJob() {
           <h2 className="font-semibold text-sm text-amber-800 flex items-center gap-2">
             <Camera size={18} /> Fotografías obligatorias *
           </h2>
-          <p className="text-xs text-amber-700">Se requiere al menos 1 fotografía obligatoria para gestionar el ticket.</p>
+          <p className="text-xs text-amber-700">Se requiere al menos 1 fotografía obligatoria. Use Cámara o Galería.</p>
           {(['inicial', 'durante', 'final'] as const).map(type => (
             <div key={type} className="space-y-1">
               <label className="block text-xs font-medium text-amber-800">{PHOTO_LABELS[type]}</label>
@@ -276,17 +276,15 @@ export default function NewServiceJob() {
                     className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded-full"><X size={12} /></button>
                 </div>
               ) : (
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => (cameraRefs.current[type] as any)?.click()}
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={async () => { const f = await pickPhoto('camera'); if (f) handlePhoto(type, f); }}
                     className="flex items-center gap-1 bg-corporate-light text-white px-3 py-2 rounded-lg text-sm">
                     <Camera size={16} /> Cámara
                   </button>
-                  <input ref={(el: HTMLInputElement | null) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
-                    onChange={e => {
-                      if (e.target.files?.[0]) {
-                        handlePhoto(type, e.target.files[0]);
-                      }
-                    }} />
+                  <button type="button" onClick={async () => { const f = await pickPhoto('gallery'); if (f) handlePhoto(type, f); }}
+                    className="flex items-center gap-1 bg-corporate-blue text-white px-3 py-2 rounded-lg text-sm">
+                    <Image size={16} /> Galería
+                  </button>
                 </div>
               )}
             </div>

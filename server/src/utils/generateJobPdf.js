@@ -87,6 +87,7 @@ export async function generateJobPdf(job, photos, technicianName) {
   addLine('Servicio', job.job_service_name || '-');
   addLine('Tipo pago', job.payment_type);
   addLine('Cobro cliente', job.amount ? `$${Number(job.amount).toLocaleString('es-CL')}` : '-');
+  addLine('Estado pago cliente', job.client_status === 'pagado' ? 'Cliente ya pagó' : 'Pendiente de pago');
   if (job.notes) {
     addLine('Notas', job.notes);
   }
@@ -95,11 +96,12 @@ export async function generateJobPdf(job, photos, technicianName) {
   }
   y -= lineHeight;
 
-  // Fotos
-  if (photos && photos.length > 0) {
+  // Fotos (ordenadas por id para mantener orden inicial/durante/final)
+  const sortedPhotos = (photos || []).slice().sort((a, b) => (a.id || 0) - (b.id || 0));
+  if (sortedPhotos.length > 0) {
     const photoLabels = ['Inicial', 'Durante', 'Final'];
-    for (let i = 0; i < photos.length; i++) {
-      const photo = photos[i];
+    for (let i = 0; i < sortedPhotos.length; i++) {
+      const photo = sortedPhotos[i];
       const imgPath = path.join(UPLOADS_JOBS, photo.image_path);
       if (!fs.existsSync(imgPath)) continue;
 

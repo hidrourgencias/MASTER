@@ -39,26 +39,28 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/ocr', ocrRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/jobs', jobsRoutes);
 
-// PDF del ticket (público con token, para link en WhatsApp)
-app.get('/api/jobs/:id/pdf', async (req, res) => {
+// PDF del ticket: ruta pública separada (SIN auth) - evita conflicto con jobs router
+app.get('/api/public/ticket-pdf/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const token = req.query.token || '';
+    const token = String(req.query.token || '').trim();
+    if (!token) return res.status(400).json({ error: 'Falta el token en la URL. Use el enlace completo que recibió por WhatsApp.' });
     const job = await db.prepare('SELECT id, pdf_token FROM service_jobs WHERE id = ?').get(id);
     if (!job || !job.pdf_token || job.pdf_token !== token) {
-      return res.status(404).send('Enlace no válido o expirado');
+      return res.status(404).json({ error: 'Enlace no válido o expirado' });
     }
     const filepath = path.join(__dirname, '..', 'uploads', 'jobs', 'pdfs', `ticket_${id}.pdf`);
-    if (!fs.existsSync(filepath)) return res.status(404).send('PDF no encontrado');
+    if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'PDF no encontrado' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="ticket_${id}.pdf"`);
     res.sendFile(filepath);
   } catch (err) {
-    res.status(500).send('Error');
+    res.status(500).json({ error: 'Error' });
   }
 });
+
+app.use('/api/jobs', jobsRoutes);
 app.use('/api/work-orders', workOrdersRoutes);
 app.use('/api/quotes', quotesRoutes);
 

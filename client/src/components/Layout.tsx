@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Receipt, BarChart3, Shield, User, Menu, X, LogOut, Settings, FileText, Phone, Wrench, Briefcase, DollarSign, ClipboardList, Send, FileSignature, ClipboardCheck } from 'lucide-react';
+import { Home, Receipt, BarChart3, Shield, User, Users, Menu, X, LogOut, Settings, FileText, Phone, Wrench, Briefcase, DollarSign, ClipboardList, Send, FileSignature, ClipboardCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type AppModule = 'gastos' | 'ordenes' | 'ventas';
@@ -123,6 +123,7 @@ export default function Layout() {
                 {isAdmin && (
                   <>
                     <DrawerLink to="/admin/ordenes-trabajo" icon={Send} label="Órdenes de Trabajo" onClick={() => setDrawerOpen(false)} />
+                    <DrawerLink to="/admin/usuarios" icon={Users} label="Personal" onClick={() => setDrawerOpen(false)} />
                     <DrawerLink to="/admin/pagos-tecnicos" icon={DollarSign} label="Pagos Técnicos" onClick={() => setDrawerOpen(false)} />
                     <DrawerLink to="/admin/auditoria-pagos" icon={FileText} label="Auditoría Pagos" onClick={() => setDrawerOpen(false)} />
                     <DrawerLink to="/admin/tipos-servicio" icon={Wrench} label="Tipos de Servicio" onClick={() => setDrawerOpen(false)} />

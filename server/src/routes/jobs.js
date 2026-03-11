@@ -47,7 +47,7 @@ async function generatePdfAndNotifyUrl(jobId, job, photos, technicianName) {
     const token = crypto.randomBytes(16).toString('hex');
     await db.prepare('UPDATE service_jobs SET pdf_token = ? WHERE id = ?').run(token, jobId);
     const base = getBaseUrl();
-    const pdfUrl = `${base}/api/jobs/${jobId}/pdf?token=${token}`;
+    const pdfUrl = `${base}/api/public/ticket-pdf/${jobId}?token=${token}`;
     const settings = await db.prepare('SELECT value FROM settings WHERE key = ?').get('whatsapp_number');
     const adminPhone = (settings?.value || '').replace(/\D/g, '') || '56940918672';
     const num = adminPhone.startsWith('56') ? adminPhone : '56' + adminPhone;

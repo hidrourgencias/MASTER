@@ -267,6 +267,11 @@ export async function initDatabase() {
   };
   // Migraciones para columnas añadidas después del schema inicial
   await addCol('users', 'whatsapp_phone', "TEXT DEFAULT ''");
+  await addCol('users', 'address', "TEXT DEFAULT ''");
+  await addCol('users', 'afp', "TEXT DEFAULT ''");
+  await addCol('users', 'health_system', "TEXT DEFAULT ''");
+  await addCol('users', 'health_organization', "TEXT DEFAULT ''");
+  await addCol('users', 'emergency_contact_phone', "TEXT DEFAULT ''");
   await addCol('service_jobs', 'client_phone', "TEXT DEFAULT ''");
   await addCol('service_jobs', 'is_garantia', 'INTEGER DEFAULT 0');
   await addCol('service_jobs', 'pdf_token', "TEXT DEFAULT ''");
@@ -387,6 +392,21 @@ export async function initDatabase() {
       } catch { /* unique constraint */ }
     }
     console.log('Servicios de trabajo iniciales creados.');
+  }
+
+  const wostCount = await pool.query("SELECT COUNT(*) as count FROM work_order_service_types");
+  if (parseInt(wostCount.rows[0].count) === 0) {
+    const defaultWOServices = [
+      'Destape de alcantarillado', 'Destape de desague', 'Destape de WC',
+      'Destape de canerias', 'Reparacion de filtraciones', 'Instalacion sanitaria',
+      'Mantencion general', 'Emergencia', 'Inspeccion tecnica', 'Otro'
+    ];
+    for (const s of defaultWOServices) {
+      try {
+        await pool.query("INSERT INTO work_order_service_types (name) VALUES ($1)", [s]);
+      } catch { /* unique constraint */ }
+    }
+    console.log('Tipos de orden de trabajo iniciales creados.');
   }
 
   const defaultSettings = [

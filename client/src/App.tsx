@@ -21,6 +21,7 @@ import TechnicianPayments from './pages/TechnicianPayments';
 import PaymentAudit from './pages/PaymentAudit';
 import AdminEquipment from './pages/AdminEquipment';
 import AdminWorkOrders from './pages/AdminWorkOrders';
+import AdminUsers from './pages/AdminUsers';
 import Quotes from './pages/Quotes';
 import QuoteForm from './pages/QuoteForm';
 
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="admin/tipos-servicio" element={<AdminRoute><AdminJobServices /></AdminRoute>} />
         <Route path="admin/equipos" element={<AdminRoute><AdminEquipment /></AdminRoute>} />
         <Route path="admin/ordenes-trabajo" element={<AdminRoute><AdminWorkOrders /></AdminRoute>} />
+        <Route path="admin/usuarios" element={<AdminRoute><AdminUsers /></AdminRoute>} />
         <Route path="admin/servicios" element={<AdminRoute><AdminServices /></AdminRoute>} />
         <Route path="admin/configuracion" element={<AdminRoute><AdminSettings /></AdminRoute>} />
         <Route path="admin/auditoria" element={<AdminRoute><AuditLog /></AdminRoute>} />

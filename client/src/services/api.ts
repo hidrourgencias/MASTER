@@ -156,7 +156,9 @@ export const api = {
   sendWorkOrder: (id: number) => request<any>(`/work-orders/${id}/send`, { method: 'PUT' }),
   getWorkOrderServiceTypes: () => request<any[]>('/work-orders/service-types'),
   createWorkOrderServiceType: (name: string) => request<any>('/work-orders/service-types', { method: 'POST', body: JSON.stringify({ name }) }),
+  syncWorkOrderServiceTypes: () => request<any>('/work-orders/service-types/sync-from-job-services', { method: 'POST', body: JSON.stringify({}) }),
   getWorkOrderAttentionTypes: () => request<any[]>('/work-orders/attention-types'),
+  getWorkOrderNotificationCounts: () => request<{ orange: number; red: number; green: number }>('/work-orders/notification-counts'),
   getNotifications: () => request<any[]>('/work-orders/notifications'),
   receiveWorkOrderAssignment: (assignmentId: number) =>
     request<any>(`/work-orders/assignments/${assignmentId}/receive`, { method: 'PUT' }),

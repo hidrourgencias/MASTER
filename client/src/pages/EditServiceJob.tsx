@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Camera, ArrowLeft, X, Loader2, AlertCircle } from 'lucide-react';
+import { Camera, ArrowLeft, X, Loader2, AlertCircle, Image } from 'lucide-react';
 import { api, getUploadsUrl } from '../services/api';
+import { pickPhoto } from '../utils/photoPicker';
 
 function jobPhotoUrl(path: string) {
   if (!path) return '';
@@ -13,8 +14,6 @@ export default function EditServiceJob() {
   const { id } = useParams();
   const { state } = useLocation();
   const job = state?.job;
-
-  const cameraRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const [form, setForm] = useState({
     client_type: 'PARTICULAR', client_name: '', client_rut: '', client_phone: '',
@@ -256,17 +255,17 @@ export default function EditServiceJob() {
                     className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded-full"><X size={12} /></button>
                 </div>
               ) : (
-                <button type="button" onClick={() => (cameraRefs.current[type] as any)?.click()}
-                  className="flex items-center gap-1 bg-corporate-light text-white px-3 py-2 rounded-lg text-sm">
-                  <Camera size={16} /> {type}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={async () => { const f = await pickPhoto('camera'); if (f) handleAddPhoto(type, f); }}
+                    className="flex items-center gap-1 bg-corporate-light text-white px-3 py-2 rounded-lg text-sm">
+                    <Camera size={16} /> Cámara
+                  </button>
+                  <button type="button" onClick={async () => { const f = await pickPhoto('gallery'); if (f) handleAddPhoto(type, f); }}
+                    className="flex items-center gap-1 bg-corporate-blue text-white px-3 py-2 rounded-lg text-sm">
+                    <Image size={16} /> Galería
+                  </button>
+                </div>
               )}
-              <input ref={(el: HTMLInputElement | null) => { if (el) cameraRefs.current[type] = el; }} type="file" accept="image/*" capture="environment" className="hidden"
-                onChange={e => {
-                  if (e.target.files?.[0]) {
-                    handleAddPhoto(type, e.target.files[0]);
-                  }
-                }} />
             </div>
           ))}
         </div>

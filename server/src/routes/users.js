@@ -9,7 +9,7 @@ router.use(authMiddleware);
 router.get('/', async (req, res) => {
   try {
     const users = await db.prepare(
-      'SELECT id, username, display_name, role, rut, bank_name, bank_account_type, bank_account_number, whatsapp_phone, must_change_password, active, created_at FROM users ORDER BY display_name'
+      'SELECT id, username, display_name, role, rut, bank_name, bank_account_type, bank_account_number, whatsapp_phone, address, afp, health_system, health_organization, emergency_contact_phone, must_change_password, active, created_at FROM users ORDER BY display_name'
     ).all();
     res.json(users);
   } catch (err) {
@@ -30,16 +30,21 @@ router.get('/technicians', async (req, res) => {
 
 router.put('/profile', async (req, res) => {
   try {
-    const { rut, bank_name, bank_account_type, bank_account_number, display_name } = req.body;
+    const { rut, bank_name, bank_account_type, bank_account_number, display_name, whatsapp_phone, address, afp, health_system, health_organization, emergency_contact_phone } = req.body;
     await db.prepare(`
-      UPDATE users SET rut = ?, bank_name = ?, bank_account_type = ?, bank_account_number = ?, display_name = COALESCE(?, display_name), updated_at = NOW()
+      UPDATE users SET rut = ?, bank_name = ?, bank_account_type = ?, bank_account_number = ?,
+        display_name = COALESCE(?, display_name), whatsapp_phone = COALESCE(?, whatsapp_phone),
+        address = COALESCE(?, address), afp = COALESCE(?, afp), health_system = COALESCE(?, health_system),
+        health_organization = COALESCE(?, health_organization), emergency_contact_phone = COALESCE(?, emergency_contact_phone),
+        updated_at = NOW()
       WHERE id = ?
-    `).run(rut || '', bank_name || '', bank_account_type || '', bank_account_number || '', display_name, req.user.id);
+    `).run(rut || '', bank_name || '', bank_account_type || '', bank_account_number || '',
+      display_name, whatsapp_phone || '', address || '', afp || '', health_system || '', health_organization || '', emergency_contact_phone || '', req.user.id);
 
     await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
       .run(req.user.id, 'UPDATE_PROFILE', 'Perfil actualizado');
 
-    const user = await db.prepare('SELECT id, username, display_name, role, rut, bank_name, bank_account_type, bank_account_number, must_change_password, active FROM users WHERE id = ?').get(req.user.id);
+    const user = await db.prepare('SELECT id, username, display_name, role, rut, bank_name, bank_account_type, bank_account_number, whatsapp_phone, address, afp, health_system, health_organization, emergency_contact_phone, must_change_password, active FROM users WHERE id = ?').get(req.user.id);
     res.json(user);
   } catch (err) {
     res.status(500).json({ error: 'Error al actualizar perfil' });
@@ -65,18 +70,23 @@ router.put('/:id/reset-password', adminMiddleware, async (req, res) => {
 router.put('/:id', adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { display_name, role, active, rut, bank_name, bank_account_type, bank_account_number, whatsapp_phone } = req.body;
+    const { display_name, role, active, rut, bank_name, bank_account_type, bank_account_number,
+      whatsapp_phone, address, afp, health_system, health_organization, emergency_contact_phone } = req.body;
 
     await db.prepare(`
       UPDATE users SET display_name = COALESCE(?, display_name), role = COALESCE(?, role), active = COALESCE(?, active),
       rut = COALESCE(?, rut), bank_name = COALESCE(?, bank_name), bank_account_type = COALESCE(?, bank_account_type),
-      bank_account_number = COALESCE(?, bank_account_number), whatsapp_phone = COALESCE(?, whatsapp_phone), updated_at = NOW() WHERE id = ?
-    `).run(display_name, role, active, rut, bank_name, bank_account_type, bank_account_number, whatsapp_phone, id);
+      bank_account_number = COALESCE(?, bank_account_number), whatsapp_phone = COALESCE(?, whatsapp_phone),
+      address = COALESCE(?, address), afp = COALESCE(?, afp), health_system = COALESCE(?, health_system),
+      health_organization = COALESCE(?, health_organization), emergency_contact_phone = COALESCE(?, emergency_contact_phone),
+      updated_at = NOW() WHERE id = ?
+    `).run(display_name, role, active, rut, bank_name, bank_account_type, bank_account_number,
+      whatsapp_phone, address, afp, health_system, health_organization, emergency_contact_phone, id);
 
     await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
       .run(req.user.id, 'UPDATE_USER', `Usuario #${id} actualizado`);
 
-    const user = await db.prepare('SELECT id, username, display_name, role, rut, bank_name, bank_account_type, bank_account_number, whatsapp_phone, must_change_password, active FROM users WHERE id = ?').get(id);
+    const user = await db.prepare('SELECT id, username, display_name, role, rut, bank_name, bank_account_type, bank_account_number, whatsapp_phone, address, afp, health_system, health_organization, emergency_contact_phone, must_change_password, active FROM users WHERE id = ?').get(id);
     res.json(user);
   } catch (err) {
     res.status(500).json({ error: 'Error al actualizar usuario' });

@@ -45,6 +45,53 @@ router.delete('/service-types/:id', adminMiddleware, async (req, res) => {
   }
 });
 
+router.post('/service-types/sync-from-job-services', adminMiddleware, async (req, res) => {
+  try {
+    const jobServices = await db.prepare('SELECT name FROM job_services WHERE active = 1').all();
+    const existing = await db.prepare('SELECT name FROM work_order_service_types').all();
+    const existingNames = new Set((existing || []).map(r => (r.name || '').toLowerCase()));
+    let added = 0;
+    for (const js of jobServices || []) {
+      const name = (js.name || '').trim();
+      if (name && !existingNames.has(name.toLowerCase())) {
+        try {
+          await db.prepare('INSERT INTO work_order_service_types (name) VALUES (?)').run(name);
+          existingNames.add(name.toLowerCase());
+          added++;
+        } catch (_) { /* unique */ }
+      }
+    }
+    res.json({ message: `${added} servicio(s) añadido(s) a la lista de órdenes de trabajo` });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al sincronizar' });
+  }
+});
+
+router.get('/notification-counts', adminMiddleware, async (req, res) => {
+  try {
+    const assignments = await db.prepare(`
+      SELECT woa.id, woa.read_at, woa.sent_at, woa.created_at
+      FROM work_order_assignments woa
+      JOIN work_orders wo ON woa.work_order_id = wo.id
+    `).all();
+    let orange = 0, red = 0, green = 0;
+    const now = Date.now();
+    for (const a of assignments || []) {
+      if (a.read_at) {
+        green++;
+      } else {
+        const ref = a.sent_at || a.created_at;
+        const elapsed = ref ? (now - new Date(ref).getTime()) / 60000 : 0;
+        if (elapsed >= 10) red++;
+        else if (elapsed >= 5) orange++;
+      }
+    }
+    res.json({ orange, red, green });
+  } catch (err) {
+    res.status(500).json({ orange: 0, red: 0, green: 0 });
+  }
+});
+
 router.get('/notifications', async (req, res) => {
   try {
     if (!req.user?.id) return res.status(401).json({ error: 'No autorizado' });

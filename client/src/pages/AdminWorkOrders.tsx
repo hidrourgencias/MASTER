@@ -182,13 +182,16 @@ export default function AdminWorkOrders() {
       </div>
 
       {/* Add service type */}
-      <div className="flex gap-2">
-        <input value={newSvcName} onChange={e => setNewSvcName(e.target.value)} placeholder="Nuevo tipo de servicio"
-          className="flex-1 px-3 py-2 rounded-xl border text-sm" />
+      <div className="flex flex-wrap gap-2">
+        <input value={newSvcName} onChange={e => setNewSvcName(e.target.value)} placeholder="Nuevo tipo de servicio (destape alcantarillado, WC, etc.)"
+          className="flex-1 min-w-[180px] px-3 py-2 rounded-xl border text-sm" />
         <button onClick={async () => {
           if (!newSvcName.trim()) return;
-          try { await api.createWorkOrderServiceType(newSvcName.trim()); setNewSvcName(''); load(); } catch {}
+          try { await api.createWorkOrderServiceType(newSvcName.trim()); setNewSvcName(''); load(); } catch (e: any) { alert(e.message || 'Error'); }
         }} className="px-3 py-2 bg-gray-200 rounded-xl text-sm font-medium">Añadir</button>
+        <button onClick={async () => {
+          try { const r = await api.syncWorkOrderServiceTypes(); alert((r as any)?.message || 'Listo'); load(); } catch (e: any) { alert(e.message || 'Error'); }
+        }} className="px-3 py-2 bg-blue-100 text-blue-800 rounded-xl text-sm font-medium">Cargar desde catálogo</button>
       </div>
 
       <AnimatePresence>
@@ -278,9 +281,14 @@ export default function AdminWorkOrders() {
                   <p className="col-span-2"><span className="text-text-secondary">Dirección:</span> {wo.address || '-'}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={() => openSendModal(wo)} className="flex items-center gap-1 px-3 py-2 bg-[#25D366] text-white rounded-xl text-sm font-medium">
-                    <Send size={16} /> Enviar orden a técnicos (WhatsApp)
+                  <button onClick={() => openSendModal(wo)} className="flex items-center gap-1 px-4 py-2.5 bg-[#25D366] text-white rounded-xl text-sm font-semibold shadow-sm hover:bg-[#20BD5A]">
+                    <Send size={18} /> Enviar orden por WhatsApp
                   </button>
+                  {wo.client_phone && (
+                    <button onClick={() => sendToClient(wo)} className="flex items-center gap-1 px-3 py-2 border border-[#25D366] text-[#25D366] rounded-xl text-sm font-medium hover:bg-[#25D366]/5">
+                      <MessageCircle size={16} /> Enviar al cliente
+                    </button>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs font-medium text-text-secondary mb-2">Estado de recepción</p>
@@ -360,6 +368,18 @@ export default function AdminWorkOrders() {
               </button>
             </div>
             <p className="px-4 pt-2 text-sm text-text-secondary">Selecciona a quiénes enviar la orden</p>
+            <div className="px-4 pb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const withWa = (sendModal.wo.assignments || []).filter((a: any) => a.whatsapp_phone).map((a: any) => a.technician_id);
+                  setSendModal({ ...sendModal, selected: withWa });
+                }}
+                className="text-xs font-medium text-corporate-blue hover:underline"
+              >
+                Seleccionar todos los técnicos con WhatsApp
+              </button>
+            </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {sendModal.wo.assignments?.map((a: any) => {
                 const hasWa = !!a.whatsapp_phone;
