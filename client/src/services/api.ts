@@ -37,11 +37,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const res = await fetch(`${getBaseUrl()}${endpoint}`, { ...options, headers });
 
   if (res.status === 401) {
+    const errBody = await res.json().catch(() => ({}));
+    const msg = errBody?.error || 'No autorizado';
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    // HashRouter: hash sin # extra para evitar ##/login
     window.location.hash = '/login';
-    throw new Error('No autorizado');
+    throw new Error(msg);
   }
 
   if (!res.ok) {

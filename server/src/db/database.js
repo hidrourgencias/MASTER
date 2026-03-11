@@ -339,6 +339,11 @@ export async function initDatabase() {
         ['administracion', hashedAdmin, 'Administrador', 'admin', 0]
       );
       console.log('Usuario administracion creado.');
+    } else {
+      // Siempre asegurar que administracion tenga la contraseña por defecto (evita acceso bloqueado)
+      const hashedAdmin = bcrypt.hashSync('administracion', 10);
+      await pool.query("UPDATE users SET password = $1 WHERE username = 'administracion'", [hashedAdmin]);
+      console.log('Admin password synced.');
     }
     const vent = await pool.query("SELECT id FROM users WHERE username = 'ventas' LIMIT 1");
     if (vent.rows.length === 0) {

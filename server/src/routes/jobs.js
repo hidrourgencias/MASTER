@@ -297,6 +297,12 @@ async function sendPaymentNotification(db, technicianId, job, payAmount, schedul
   } catch (_) { /* tabla notifications puede no existir */ }
 }
 
+const VALID_PAYMENT_SCHEDULES = ['1_dia', '5_dias', '15_dias', '30_dias', '45_dias', 'inmediato_transferencia', 'inmediato_efectivo', 'garantia'];
+
+function sanitizePaymentSchedule(v) {
+  return (v && VALID_PAYMENT_SCHEDULES.includes(String(v))) ? String(v) : '1_dia';
+}
+
 const PAYMENT_SCHEDULE_LABELS = {
   '1_dia': '1 día', '5_dias': '5 días', '15_dias': '15 días', '30_dias': '30 días', '45_dias': '45 días',
   'inmediato_transferencia': 'Pago inmediato (transferencia)', 'inmediato_efectivo': 'Pago inmediato (efectivo)',
@@ -307,13 +313,14 @@ router.put('/:id/approve', authMiddleware, adminMiddleware, async (req, res) => 
   try {
     const { id } = req.params;
     const { amount, technician_payment, admin_payment_method, admin_payment_schedule, admin_payment_notes } = req.body;
+    const schedule = sanitizePaymentSchedule(admin_payment_schedule);
     const job = await db.prepare(`
       SELECT j.*, js.name as job_service_name FROM service_jobs j
       LEFT JOIN job_services js ON j.job_service_id = js.id WHERE j.id = ?
     `).get(id);
     if (!job) return res.status(404).json({ error: 'No encontrado' });
 
-    const isGarantia = job.is_garantia === 1 || admin_payment_schedule === 'garantia';
+    const isGarantia = job.is_garantia === 1 || schedule === 'garantia';
     const payAmount = isGarantia ? 0 : (parseFloat(technician_payment) || 0);
     const amt = amount != null ? parseFloat(amount) : job.amount;
 
@@ -321,13 +328,13 @@ router.put('/:id/approve', authMiddleware, adminMiddleware, async (req, res) => 
       UPDATE service_jobs SET amount = ?, technician_payment = ?, ticket_status = 'aprobado',
         admin_payment_method = ?, admin_payment_schedule = ?, admin_payment_notes = ?, updated_at = NOW()
       WHERE id = ?
-    `).run(amt, payAmount, admin_payment_method || null, admin_payment_schedule || null, admin_payment_notes || null, id);
+    `).run(amt, payAmount, admin_payment_method || null, schedule, admin_payment_notes || null, id);
 
     await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
       .run(req.user.id, 'APPROVE_JOB', `Ticket #${id} aprobado. Pago técnico: $${payAmount}`);
 
     if (job.technician_id) {
-      const label = PAYMENT_SCHEDULE_LABELS[admin_payment_schedule] || admin_payment_schedule || '';
+      const label = PAYMENT_SCHEDULE_LABELS[schedule] || schedule || '';
       await sendPaymentNotification(db, job.technician_id, job, payAmount, label);
     }
 
@@ -348,13 +355,14 @@ router.put('/:id/set-payment', authMiddleware, adminMiddleware, async (req, res)
   try {
     const { id } = req.params;
     const { technician_payment, admin_payment_method, admin_payment_schedule, admin_payment_notes } = req.body;
+    const schedule = sanitizePaymentSchedule(admin_payment_schedule);
     const job = await db.prepare(`
       SELECT j.*, js.name as job_service_name FROM service_jobs j
       LEFT JOIN job_services js ON j.job_service_id = js.id WHERE j.id = ?
     `).get(id);
     if (!job) return res.status(404).json({ error: 'No encontrado' });
 
-    const isGarantia = job.is_garantia === 1 || admin_payment_schedule === 'garantia';
+    const isGarantia = job.is_garantia === 1 || schedule === 'garantia';
     const payAmount = isGarantia ? 0 : (parseFloat(technician_payment) ?? job.technician_payment ?? 0);
     if (!isGarantia && (isNaN(payAmount) || payAmount < 0)) {
       return res.status(400).json({ error: 'Monto inválido' });
@@ -364,13 +372,13 @@ router.put('/:id/set-payment', authMiddleware, adminMiddleware, async (req, res)
       UPDATE service_jobs SET technician_payment = ?, admin_payment_method = ?,
         admin_payment_schedule = ?, admin_payment_notes = ?, updated_at = NOW()
       WHERE id = ?
-    `).run(payAmount, admin_payment_method || null, admin_payment_schedule || null, admin_payment_notes || null, id);
+    `).run(payAmount, admin_payment_method || null, schedule, admin_payment_notes || null, id);
 
     await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
       .run(req.user.id, 'SET_JOB_PAYMENT', `Pago técnico #${id}: $${payAmount}`);
 
     if (job.technician_id) {
-      const label = PAYMENT_SCHEDULE_LABELS[admin_payment_schedule] || admin_payment_schedule || '';
+      const label = PAYMENT_SCHEDULE_LABELS[schedule] || schedule || '';
       await sendPaymentNotification(db, job.technician_id, job, payAmount, label);
     }
 

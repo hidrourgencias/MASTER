@@ -16,7 +16,8 @@ export default function TechnicianPayments() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
-  const [form, setForm] = useState({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: '1_dia', admin_payment_notes: '' });
+  const VALID_SCHEDULES = ['1_dia', '5_dias', '15_dias', '30_dias', '45_dias', 'inmediato_transferencia', 'inmediato_efectivo', 'garantia'];
+  const [form, setForm] = useState({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: '1_dia' as string, admin_payment_notes: '' });
   const [filter, setFilter] = useState<'pending' | 'paid' | 'all'>('pending');
   const [exporting, setExporting] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<{ id: number; name: string }[]>([]);
@@ -38,11 +39,12 @@ export default function TechnicianPayments() {
 
   async function handleApprove(jobId: number) {
     try {
+      const schedule = VALID_SCHEDULES.includes(form.admin_payment_schedule) ? form.admin_payment_schedule : '1_dia';
       await api.approveJob(jobId, {
         amount: form.amount ? parseFloat(form.amount) : undefined,
         technician_payment: form.technician_payment ? parseFloat(form.technician_payment) : undefined,
         admin_payment_method: form.admin_payment_method,
-        admin_payment_schedule: form.admin_payment_schedule,
+        admin_payment_schedule: schedule,
         admin_payment_notes: form.admin_payment_notes
       });
       setEditing(null);
@@ -55,11 +57,12 @@ export default function TechnicianPayments() {
 
   async function handleSetPayment(jobId: number) {
     try {
+      const schedule = VALID_SCHEDULES.includes(form.admin_payment_schedule) ? form.admin_payment_schedule : '1_dia';
       await api.setJobPaymentFull(jobId, {
         amount: form.amount ? parseFloat(form.amount) : undefined,
         technician_payment: form.technician_payment ? parseFloat(form.technician_payment) : undefined,
         admin_payment_method: form.admin_payment_method,
-        admin_payment_schedule: form.admin_payment_schedule,
+        admin_payment_schedule: schedule,
         admin_payment_notes: form.admin_payment_notes
       });
       setEditing(null);
@@ -229,7 +232,7 @@ export default function TechnicianPayments() {
                                   <button onClick={() => handleSetPayment(job.id)} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">Guardar</button>
                                 )}
                                 <button onClick={() => { setEditing(null); setForm({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: '1_dia', admin_payment_notes: '' }); }}
-                                  className="text-xs bg-gray-400 text-white px-2 py-1 rounded">Cancelar</button>
+                                  type="button" className="text-xs bg-gray-400 text-white px-2 py-1 rounded hover:bg-gray-500">Cancelar</button>
                               </div>
                             </div>
                           ) : (
@@ -242,11 +245,11 @@ export default function TechnicianPayments() {
                                   {job.admin_payment_notes && <p className="text-xs text-text-secondary max-w-[120px] truncate" title={job.admin_payment_notes}>{job.admin_payment_notes}</p>}
                                   {!job.technician_paid ? (
                                     <div className="flex gap-1">
-                                      <button onClick={() => { setEditing(job.id); setForm({
+                                      <button onClick={() => { setEditing(job.id); const s = job.admin_payment_schedule; setForm({
                                         amount: String(job.amount || ''),
                                         technician_payment: String(job.technician_payment || ''),
                                         admin_payment_method: job.admin_payment_method || '',
-                                        admin_payment_schedule: job.admin_payment_schedule || '1_dia',
+                                        admin_payment_schedule: VALID_SCHEDULES.includes(s) ? s : '1_dia',
                                         admin_payment_notes: job.admin_payment_notes || ''
                                       }); }}
                                         className="text-xs text-corporate-blue hover:underline flex items-center gap-0.5">
