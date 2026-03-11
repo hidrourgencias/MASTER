@@ -145,6 +145,23 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// Crea OT desde cotización (sin técnico; admin asigna después)
+async function createWorkOrderFromQuote(quote, adminId) {
+  let servicesText = '';
+  try {
+    const details = JSON.parse(quote.services_details || '[]');
+    servicesText = details.map(d => `- ${d.description} (Cant: ${d.quantity})`).join('\n');
+  } catch (e) {}
+  const backgroundText = `Origen: Cotización #${quote.id} ${quote.folio || ''}\nServicios:\n${servicesText}\n\nNotas: ${quote.admin_notes || ''}`;
+  const wost = await db.prepare('SELECT id FROM work_order_service_types LIMIT 1').get();
+  const serviceTypeId = wost ? wost.id : null;
+  const result = await db.prepare(`
+    INSERT INTO work_orders (created_by, client_name, address, background_info, contact_phone, attention_type, status, service_type_id)
+    VALUES (?, ?, ?, ?, ?, 'cotizacion', 'asignada', ?)
+  `).run(adminId, quote.client_name, quote.client_address || '', backgroundText, quote.client_phone || '', serviceTypeId);
+  return result.lastInsertRowid;
+}
+
 // Admin endpoints
 router.put('/:id/status', async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'No autorizado' });
@@ -156,12 +173,25 @@ router.put('/:id/status', async (req, res) => {
       return res.status(400).json({ error: 'Estado inválido' });
     }
     
+    const quote = await db.prepare('SELECT * FROM quotes WHERE id = ?').get(req.params.id);
+    if (!quote) return res.status(404).json({ error: 'Cotización no encontrada' });
+    
     await db.prepare(`
       UPDATE quotes SET status = ?, admin_notes = ?, updated_at = NOW() WHERE id = ?
     `).run(status, admin_notes || '', req.params.id);
     
+    // Si se aprueba y aún no tiene OT, crear OT automáticamente
+    if (status === 'aprobada' && !quote.work_order_id) {
+      const woId = await createWorkOrderFromQuote(quote, req.user.id);
+      await db.prepare('UPDATE quotes SET work_order_id = ? WHERE id = ?').run(woId, req.params.id);
+      const { appendWorkOrderToExcel } = await import('../utils/workOrdersExcel.js');
+      appendWorkOrderToExcel(woId).catch(err => console.error('Excel append error:', err));
+      return res.json({ message: 'Estado actualizado. Orden de Trabajo #' + woId + ' creada automáticamente.', work_order_id: woId });
+    }
+    
     res.json({ message: 'Estado actualizado' });
   } catch (err) {
+    console.error('Quote status error:', err);
     res.status(500).json({ error: 'Error al actualizar estado' });
   }
 });
@@ -227,6 +257,9 @@ router.post('/:id/convert-work-order', async (req, res) => {
     
     // Actualizar cotizacion con el id de la OT
     await db.prepare('UPDATE quotes SET work_order_id = ? WHERE id = ?').run(workOrderId, quote.id);
+
+    const { appendWorkOrderToExcel } = await import('../utils/workOrdersExcel.js');
+    appendWorkOrderToExcel(workOrderId).catch(err => console.error('Excel append error:', err));
     
     // Notify technician
     try {

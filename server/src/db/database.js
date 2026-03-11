@@ -265,10 +265,16 @@ export async function initDatabase() {
       await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} ${def}`);
     } catch (_) {}
   };
-  // client_phone no está en CREATE TABLE; las demás columnas de service_jobs ya están definidas
-  await addCol('service_jobs', 'client_phone', 'TEXT DEFAULT \'\'');
+  // Migraciones para columnas añadidas después del schema inicial
+  await addCol('users', 'whatsapp_phone', "TEXT DEFAULT ''");
+  await addCol('service_jobs', 'client_phone', "TEXT DEFAULT ''");
+  await addCol('service_jobs', 'is_garantia', 'INTEGER DEFAULT 0');
+  await addCol('service_jobs', 'pdf_token', "TEXT DEFAULT ''");
 
   await addCol('work_order_assignments', 'sent_at', 'TIMESTAMP');
+  await addCol('work_order_assignments', 'escalation_level', 'INTEGER DEFAULT 0');
+  await addCol('work_order_assignments', 'reminder_sent_at', 'TIMESTAMP');
+  await addCol('work_order_assignments', 'admin_approved_at', 'TIMESTAMP');
   await addCol('work_orders', 'address', 'TEXT DEFAULT \'\'');
   await addCol('work_orders', 'schedule', 'TEXT DEFAULT \'\'');
   await addCol('work_orders', 'client_phone', 'TEXT DEFAULT \'\'');

@@ -3,8 +3,10 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import crypto from 'crypto';
 import db from '../db/database.js';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
+import { saveJobPdf } from '../utils/generateJobPdf.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -33,6 +35,29 @@ router.use(authMiddleware);
 function ensureJobsUploadDir() {
   const dir = path.join(__dirname, '..', '..', 'uploads', 'jobs');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function getBaseUrl() {
+  return process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || 'https://hidrourgencias.onrender.com';
+}
+
+async function generatePdfAndNotifyUrl(jobId, job, photos, technicianName) {
+  try {
+    await saveJobPdf(jobId, job, photos, technicianName);
+    const token = crypto.randomBytes(16).toString('hex');
+    await db.prepare('UPDATE service_jobs SET pdf_token = ? WHERE id = ?').run(token, jobId);
+    const base = getBaseUrl();
+    const pdfUrl = `${base}/api/jobs/${jobId}/pdf?token=${token}`;
+    const settings = await db.prepare('SELECT value FROM settings WHERE key = ?').get('whatsapp_number');
+    const adminPhone = (settings?.value || '').replace(/\D/g, '') || '56940918672';
+    const num = adminPhone.startsWith('56') ? adminPhone : '56' + adminPhone;
+    const estadoPago = job.client_status === 'pagado' ? 'Cliente ya pagó' : 'Pendiente de pago';
+    const msg = `Nuevo ticket #${jobId} ejecutado - ${job.client_name} - ${job.job_service_name || 'Servicio'}.\nEstado pago: ${estadoPago}.\nDescargar PDF: ${pdfUrl}`;
+    return { pdfUrl, whatsappNotifyUrl: `https://wa.me/${num}?text=${encodeURIComponent(msg)}` };
+  } catch (err) {
+    console.error('PDF generation error:', err);
+    return null;
+  }
 }
 
 router.get('/job-services', async (req, res) => {
@@ -211,7 +236,9 @@ router.post('/', upload.array('photos', 10), async (req, res) => {
       LEFT JOIN job_services js ON j.job_service_id = js.id WHERE j.id = ?
     `).get(jobId);
     const photos = await db.prepare('SELECT * FROM service_job_photos WHERE service_job_id = ?').all(jobId);
-    res.status(201).json({ ...job, photos });
+    const techRow = await db.prepare('SELECT display_name FROM users WHERE id = ?').get(req.user.id);
+    const notify = await generatePdfAndNotifyUrl(jobId, job, photos, techRow?.display_name || '');
+    res.status(201).json({ ...job, photos, pdfNotify: notify });
   } catch (err) {
     console.error('Create job error:', err);
     res.status(500).json({ error: err.message || 'Error al crear servicio' });
@@ -279,7 +306,9 @@ router.put('/:id', upload.array('photos', 5), async (req, res) => {
       LEFT JOIN job_services js ON j.job_service_id = js.id WHERE j.id = ?
     `).get(id);
     const photos = await db.prepare('SELECT * FROM service_job_photos WHERE service_job_id = ?').all(id);
-    res.json({ ...updated, photos });
+    const techRow2 = await db.prepare('SELECT display_name FROM users WHERE id = ?').get(req.user.id);
+    const notify2 = await generatePdfAndNotifyUrl(Number(id), updated, photos, techRow2?.display_name || '');
+    res.json({ ...updated, photos, pdfNotify: notify2 });
   } catch (err) {
     res.status(500).json({ error: 'Error al actualizar' });
   }
@@ -398,8 +427,16 @@ router.put('/:id/set-payment', authMiddleware, adminMiddleware, async (req, res)
 router.put('/:id/mark-paid', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+    const { admin_payment_method } = req.body;
+    const method = ['Efectivo', 'Transferencia', 'efectivo', 'transferencia'].includes(String(admin_payment_method || ''))
+      ? (String(admin_payment_method).toLowerCase() === 'efectivo' ? 'Efectivo' : 'Transferencia')
+      : (admin_payment_method || null);
 
-    await db.prepare('UPDATE service_jobs SET technician_paid = 1, technician_paid_at = NOW(), updated_at = NOW() WHERE id = ?').run(id);
+    await db.prepare(`
+      UPDATE service_jobs SET technician_paid = 1, technician_paid_at = NOW(),
+        admin_payment_method = COALESCE(?, admin_payment_method), updated_at = NOW()
+      WHERE id = ?
+    `).run(method, id);
 
     await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
       .run(req.user.id, 'PAY_TECHNICIAN', `Técnico pagado #${id}`);

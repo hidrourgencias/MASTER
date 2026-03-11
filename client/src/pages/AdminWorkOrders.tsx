@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Send, MessageCircle, Clock, Check, X, ChevronDown, ChevronUp, AlertTriangle, Phone } from 'lucide-react';
 import { api } from '../services/api';
@@ -30,6 +31,8 @@ function openWhatsApp(phone: string, text: string) {
 }
 
 export default function AdminWorkOrders() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<any[]>([]);
   const [serviceTypes, setServiceTypes] = useState<any[]>([]);
   const [technicians, setTechnicians] = useState<any[]>([]);
@@ -48,6 +51,7 @@ export default function AdminWorkOrders() {
     technician_ids: [] as number[]
   });
   const [saving, setSaving] = useState(false);
+  const [sendModal, setSendModal] = useState<{ wo: any; selected: number[] } | null>(null);
 
   useEffect(() => { load(); }, []);
   useEffect(() => {
@@ -67,6 +71,24 @@ export default function AdminWorkOrders() {
       setServiceTypes(st);
       setTechnicians(tech);
       setAttentionTypes(at);
+      const state = location.state as any;
+      const expandWoId = state?.expandWoId;
+      const prefillQuote = state?.prefillFromQuote;
+      if (expandWoId && o.some((wo: any) => wo.id === expandWoId)) {
+        setExpanded(expandWoId);
+        navigate(location.pathname, { replace: true, state: {} });
+      } else if (prefillQuote) {
+        setForm(p => ({
+          ...p,
+          attention_type: 'cotizacion',
+          client_name: prefillQuote.client_name || '',
+          client_phone: prefillQuote.client_phone || '',
+          address: prefillQuote.client_address || '',
+          schedule: ''
+        }));
+        setShowForm(true);
+        navigate(location.pathname, { replace: true, state: {} });
+      }
     } catch (e) { console.error(e); }
     setLoading(false);
   }
@@ -103,13 +125,30 @@ export default function AdminWorkOrders() {
     else alert('Agregue teléfono del cliente para enviar WhatsApp');
   }
 
-  function sendToTechnicians(wo: any) {
-    const text = buildWhatsAppWorkOrderMsg(wo);
-    wo.assignments?.forEach((a: any) => {
+  function openSendModal(wo: any) {
+    const ids = (wo.assignments || []).filter((a: any) => a.whatsapp_phone).map((a: any) => a.technician_id);
+    setSendModal({ wo, selected: ids });
+  }
+
+  function toggleSendTech(techId: number) {
+    if (!sendModal) return;
+    const has = sendModal.selected.includes(techId);
+    setSendModal({
+      ...sendModal,
+      selected: has ? sendModal.selected.filter(x => x !== techId) : [...sendModal.selected, techId]
+    });
+  }
+
+  function confirmSendToTechnicians() {
+    if (!sendModal) return;
+    const text = buildWhatsAppWorkOrderMsg(sendModal.wo);
+    const toSend = (sendModal.wo.assignments || []).filter((a: any) => sendModal.selected.includes(a.technician_id));
+    toSend.forEach((a: any) => {
       const phone = a.whatsapp_phone || '';
       if (phone) openWhatsApp(phone, text);
     });
-    api.sendWorkOrder(wo.id).catch(() => {});
+    api.sendWorkOrder(sendModal.wo.id).catch(() => {});
+    setSendModal(null);
   }
 
   function getElapsedMin(created: string) {
@@ -238,8 +277,8 @@ export default function AdminWorkOrders() {
                   <p><span className="text-text-secondary">Horario:</span> {wo.schedule || '-'}</p>
                   <p className="col-span-2"><span className="text-text-secondary">Dirección:</span> {wo.address || '-'}</p>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => sendToTechnicians(wo)} className="flex items-center gap-1 px-3 py-2 bg-[#25D366] text-white rounded-xl text-sm font-medium">
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => openSendModal(wo)} className="flex items-center gap-1 px-3 py-2 bg-[#25D366] text-white rounded-xl text-sm font-medium">
                     <Send size={16} /> Enviar orden a técnicos (WhatsApp)
                   </button>
                 </div>
@@ -303,6 +342,74 @@ export default function AdminWorkOrders() {
           <Send size={40} className="mx-auto mb-2 opacity-50" />
           <p>No hay órdenes de trabajo</p>
           <button onClick={() => setShowForm(true)} className="mt-2 text-corporate-blue font-medium">Crear primera orden</button>
+        </div>
+      )}
+
+      {/* Modal: Lista de contactos WhatsApp para enviar orden */}
+      {sendModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col"
+          >
+            <div className="p-4 border-b flex items-center justify-between">
+              <h3 className="font-semibold text-lg">Enviar orden por WhatsApp</h3>
+              <button onClick={() => setSendModal(null)} className="p-2 rounded-lg hover:bg-gray-100">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="px-4 pt-2 text-sm text-text-secondary">Selecciona a quiénes enviar la orden</p>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {sendModal.wo.assignments?.map((a: any) => {
+                const hasWa = !!a.whatsapp_phone;
+                const selected = sendModal.selected.includes(a.technician_id);
+                return (
+                  <div
+                    key={a.id}
+                    className={`flex items-center justify-between p-3 rounded-xl border ${
+                      hasWa ? (selected ? 'border-[#25D366] bg-[#25D366]/5' : 'border-gray-200 hover:bg-gray-50') : 'border-amber-200 bg-amber-50/50 opacity-80'
+                    }`}
+                  >
+                    <div>
+                      <p className="font-medium text-sm">{a.technician_name}</p>
+                      <p className={`text-xs ${hasWa ? 'text-green-700' : 'text-amber-700'}`}>
+                        {hasWa ? a.whatsapp_phone : 'Sin WhatsApp configurado'}
+                      </p>
+                    </div>
+                    {hasWa ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleSendTech(a.technician_id)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                          selected ? 'bg-[#25D366] text-white' : 'bg-gray-200 text-gray-600'
+                        }`}
+                      >
+                        {selected ? 'Enviar' : 'No enviar'}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-amber-600">Configurar en Admin</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="p-4 border-t flex gap-2">
+              <button
+                onClick={() => setSendModal(null)}
+                className="flex-1 py-2.5 border rounded-xl font-medium"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmSendToTechnicians}
+                disabled={sendModal.selected.length === 0}
+                className="flex-1 py-2.5 bg-[#25D366] text-white rounded-xl font-medium disabled:opacity-50"
+              >
+                Enviar a {sendModal.selected.length} contacto(s)
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
     </div>

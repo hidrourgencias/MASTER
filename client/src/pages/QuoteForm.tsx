@@ -92,15 +92,19 @@ export default function QuoteForm() {
 
   const handleConvertToWO = async () => {
     if (!selectedTech) return alert('Debes seleccionar un técnico');
-    if (!confirm('¿Crear Orden de Trabajo?')) return;
-    
     setSaving(true);
     try {
-      const res = await api.convertQuoteToWO(Number(id), Number(selectedTech));
-      alert(`Orden de Trabajo #${res.work_order_id} creada exitosamente.`);
-      navigate('/admin/ordenes-trabajo');
+      if (quote.work_order_id) {
+        await api.assignWorkOrderTechnician(quote.work_order_id, Number(selectedTech));
+        alert('Técnico asignado a la OT.');
+      } else {
+        if (!confirm('¿Crear Orden de Trabajo?')) return;
+        const res = await api.convertQuoteToWO(Number(id), Number(selectedTech));
+        alert(`Orden de Trabajo #${res.work_order_id} creada exitosamente.`);
+      }
+      loadQuote();
     } catch (err: any) {
-      alert(err.message || 'Error al convertir');
+      alert(err.message || 'Error');
     } finally {
       setSaving(false);
     }
@@ -339,24 +343,37 @@ export default function QuoteForm() {
             </div>
           )}
 
-          {quote.status === 'aprobada' && !quote.work_order_id && (
+          {quote.status === 'aprobada' && (
             <div className="pt-4 border-t border-blue-200">
-              <h3 className="text-sm font-semibold text-blue-900 mb-2">Convertir a Orden de Trabajo</h3>
-              <div className="flex gap-2 items-center">
+              <h3 className="text-sm font-semibold text-blue-900 mb-2">
+                {quote.work_order_id ? `OT #${quote.work_order_id} creada` : 'Convertir a Orden de Trabajo'}
+              </h3>
+              <div className="flex gap-2 items-center flex-wrap">
+                <button 
+                  onClick={() => navigate('/admin/ordenes-trabajo', { 
+                    state: quote.work_order_id 
+                      ? { expandWoId: quote.work_order_id } 
+                      : { prefillFromQuote: quote }
+                  })}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-semibold flex items-center gap-2 hover:bg-purple-700"
+                >
+                  <Send size={16} /> Crear y despachar OT
+                </button>
+                <span className="text-xs text-blue-700">Asignar técnico y enviar por WhatsApp</span>
                 <select 
                   value={selectedTech}
                   onChange={e => setSelectedTech(e.target.value)}
-                  className="flex-1 p-2 rounded-xl border bg-white text-sm"
+                  className="flex-1 min-w-[160px] p-2 rounded-xl border bg-white text-sm"
                 >
-                  <option value="">Seleccione Técnico...</option>
+                  <option value="">Asignar técnico aquí...</option>
                   {technicians.map(t => <option key={t.id} value={t.id}>{t.display_name}</option>)}
                 </select>
                 <button 
                   onClick={handleConvertToWO}
                   disabled={saving || !selectedTech}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-semibold flex items-center gap-2 hover:bg-purple-700 disabled:opacity-50"
+                  className="px-4 py-2 border border-purple-300 text-purple-800 rounded-xl text-sm font-medium hover:bg-purple-50"
                 >
-                  <Send size={16} /> Crear OT
+                  {quote.work_order_id ? 'Asignar técnico' : 'Crear OT'}
                 </button>
               </div>
             </div>

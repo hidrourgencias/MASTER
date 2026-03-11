@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { DollarSign, Check, Camera, ChevronDown, ChevronUp, Download, FileText } from 'lucide-react';
+import { DollarSign, Check, Camera, ChevronDown, ChevronUp, Download, FileText, X } from 'lucide-react';
 import { api, getUploadsUrl } from '../services/api';
 import { formatCurrency, formatDate, clientTypeLabel } from '../utils/format';
 
@@ -21,6 +21,8 @@ export default function TechnicianPayments() {
   const [filter, setFilter] = useState<'pending' | 'paid' | 'all'>('pending');
   const [exporting, setExporting] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<{ id: number; name: string }[]>([]);
+  const [markPaidModal, setMarkPaidModal] = useState<{ jobId: number } | null>(null);
+  const [markPaidMethod, setMarkPaidMethod] = useState<'Efectivo' | 'Transferencia'>('Transferencia');
 
   useEffect(() => { load(); }, []);
 
@@ -73,9 +75,10 @@ export default function TechnicianPayments() {
     }
   }
 
-  async function markPaid(jobId: number) {
+  async function markPaid(jobId: number, method?: 'Efectivo' | 'Transferencia') {
     try {
-      await api.markJobPaid(jobId);
+      await api.markJobPaid(jobId, method ? { admin_payment_method: method } : undefined);
+      setMarkPaidModal(null);
       load();
     } catch (e: any) {
       alert(e.message || 'Error');
@@ -196,6 +199,8 @@ export default function TechnicianPayments() {
                           <p className="text-xs text-text-secondary">{job.job_service_name} · {formatDate(job.date)}</p>
                           <p className="text-xs text-text-secondary">{clientTypeLabel(job.client_type)}
                             {job.is_garantia === 1 && <span className="ml-1 px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px]">Garantía</span>}
+                            {job.client_status === 'pagado' && <span className="ml-1 px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px]">Cliente pagó</span>}
+                            {job.client_status === 'pendiente_pago' && <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px]">Pend. pago cliente</span>}
                           </p>
                         </div>
                         <div className="flex flex-col items-end gap-2">
@@ -256,7 +261,7 @@ export default function TechnicianPayments() {
                                         <DollarSign size={12} /> Asignar
                                       </button>
                                       {Number(job.technician_payment || 0) > 0 && (
-                                        <button onClick={() => markPaid(job.id)} className="text-xs text-green-600 hover:underline flex items-center gap-0.5">
+                                        <button onClick={() => { setMarkPaidModal({ jobId: job.id }); setMarkPaidMethod('Transferencia'); }} className="text-xs text-green-600 hover:underline flex items-center gap-0.5">
                                           <Check size={12} /> Pagar
                                         </button>
                                       )}
@@ -283,6 +288,48 @@ export default function TechnicianPayments() {
         <div className="bg-white rounded-xl p-8 text-center text-text-secondary">
           <DollarSign size={40} className="mx-auto mb-2 opacity-50" />
           <p>No hay tickets {filter === 'pending' ? 'pendientes' : filter === 'paid' ? 'pagados' : ''}</p>
+        </div>
+      )}
+
+      {/* Modal: Pagar técnico - efectivo o transferencia */}
+      {markPaidModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-semibold text-lg">Registrar pago al técnico</h3>
+              <button onClick={() => setMarkPaidModal(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="text-sm text-text-secondary mb-4">¿Cómo se realizó el pago al técnico?</p>
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setMarkPaidMethod('Efectivo')}
+                className={`flex-1 py-3 rounded-xl font-medium text-sm transition ${
+                  markPaidMethod === 'Efectivo' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Efectivo
+              </button>
+              <button
+                onClick={() => setMarkPaidMethod('Transferencia')}
+                className={`flex-1 py-3 rounded-xl font-medium text-sm transition ${
+                  markPaidMethod === 'Transferencia' ? 'bg-corporate-blue text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Transferencia
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setMarkPaidModal(null)} className="flex-1 py-2.5 border rounded-xl font-medium">
+                Cancelar
+              </button>
+              <button onClick={() => markPaid(markPaidModal.jobId, markPaidMethod)}
+                className="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700">
+                Confirmar pago
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

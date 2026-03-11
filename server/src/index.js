@@ -21,10 +21,12 @@ const PORT = process.env.PORT || 3001;
 
 // Crear carpetas de uploads si no existen (necesario en Render)
 const uploadsBase = path.join(__dirname, '..', 'uploads');
-['', 'jobs', 'temp'].forEach(sub => {
+['', 'jobs', 'jobs/pdfs', 'temp'].forEach(sub => {
   const dir = sub ? path.join(uploadsBase, sub) : uploadsBase;
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
+const datosDir = path.join(__dirname, '..', '..', 'datos');
+if (!fs.existsSync(datosDir)) fs.mkdirSync(datosDir, { recursive: true });
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -38,6 +40,25 @@ app.use('/api/users', userRoutes);
 app.use('/api/ocr', ocrRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/jobs', jobsRoutes);
+
+// PDF del ticket (público con token, para link en WhatsApp)
+app.get('/api/jobs/:id/pdf', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const token = req.query.token || '';
+    const job = await db.prepare('SELECT id, pdf_token FROM service_jobs WHERE id = ?').get(id);
+    if (!job || !job.pdf_token || job.pdf_token !== token) {
+      return res.status(404).send('Enlace no válido o expirado');
+    }
+    const filepath = path.join(__dirname, '..', 'uploads', 'jobs', 'pdfs', `ticket_${id}.pdf`);
+    if (!fs.existsSync(filepath)) return res.status(404).send('PDF no encontrado');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="ticket_${id}.pdf"`);
+    res.sendFile(filepath);
+  } catch (err) {
+    res.status(500).send('Error');
+  }
+});
 app.use('/api/work-orders', workOrdersRoutes);
 app.use('/api/quotes', quotesRoutes);
 

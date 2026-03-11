@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import db from '../db/database.js';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
+import { appendWorkOrderToExcel } from '../utils/workOrdersExcel.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -128,9 +129,6 @@ router.post('/', adminMiddleware, async (req, res) => {
     }
     let techIds = Array.isArray(technician_ids) ? technician_ids : (technician_ids ? [technician_ids] : []);
     techIds = techIds.filter(Boolean);
-    if (techIds.length === 0) {
-      return res.status(400).json({ error: 'Debe asignar al menos un técnico' });
-    }
 
     const result = await db.prepare(`
       INSERT INTO work_orders (attention_type, service_type_id, client_name, client_phone, address, schedule, created_by)
@@ -150,6 +148,8 @@ router.post('/', adminMiddleware, async (req, res) => {
       await db.prepare('INSERT INTO work_order_assignments (work_order_id, technician_id) VALUES (?, ?)').run(woId, tid);
     }
 
+    appendWorkOrderToExcel(woId).catch(err => console.error('Excel append error:', err));
+
     const wo = await db.prepare(`
       SELECT wo.*, wost.name as service_type_name
       FROM work_orders wo
@@ -166,6 +166,26 @@ router.post('/', adminMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Create work order:', err);
     res.status(500).json({ error: err.message || 'Error al crear' });
+  }
+});
+
+router.post('/:id/assign', adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { technician_id } = req.body;
+    if (!technician_id) return res.status(400).json({ error: 'Se requiere technician_id' });
+    const wo = await db.prepare('SELECT id FROM work_orders WHERE id = ?').get(id);
+    if (!wo) return res.status(404).json({ error: 'Orden no encontrada' });
+    await db.prepare('INSERT INTO work_order_assignments (work_order_id, technician_id) VALUES (?, ?)').run(id, technician_id);
+    try {
+      await db.prepare(`
+        INSERT INTO notifications (user_id, type, title, message, created_at)
+        VALUES (?, 'OT_ASIGNADA', 'Nueva Orden de Trabajo', ?, NOW())
+      `).run(technician_id, `Se le ha asignado la OT #${id}. Revise en la app.`);
+    } catch (_) {}
+    res.json({ message: 'Técnico asignado' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al asignar' });
   }
 });
 

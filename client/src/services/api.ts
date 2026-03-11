@@ -138,8 +138,8 @@ export const api = {
     request<any>(`/jobs/${id}/set-payment`, {
       method: 'PUT', body: JSON.stringify(data)
     }),
-  markJobPaid: (id: number) =>
-    request<any>(`/jobs/${id}/mark-paid`, { method: 'PUT', body: JSON.stringify({}) }),
+  markJobPaid: (id: number, data?: { admin_payment_method?: string }) =>
+    request<any>(`/jobs/${id}/mark-paid`, { method: 'PUT', body: JSON.stringify(data || {}) }),
   deleteJob: (id: number) =>
     request<any>(`/jobs/${id}`, { method: 'DELETE' }),
 
@@ -151,6 +151,8 @@ export const api = {
 
   getWorkOrders: () => request<any[]>('/work-orders'),
   createWorkOrder: (data: any) => request<any>('/work-orders', { method: 'POST', body: JSON.stringify(data) }),
+  assignWorkOrderTechnician: (woId: number, technicianId: number) =>
+    request<any>(`/work-orders/${woId}/assign`, { method: 'POST', body: JSON.stringify({ technician_id: technicianId }) }),
   sendWorkOrder: (id: number) => request<any>(`/work-orders/${id}/send`, { method: 'PUT' }),
   getWorkOrderServiceTypes: () => request<any[]>('/work-orders/service-types'),
   createWorkOrderServiceType: (name: string) => request<any>('/work-orders/service-types', { method: 'POST', body: JSON.stringify({ name }) }),

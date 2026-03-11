@@ -102,7 +102,12 @@ export default function EditServiceJob() {
         }
       });
       fd.append('photo_types', photoTypes.join(','));
-      await api.updateJob(Number(id), fd);
+      const job = await api.updateJob(Number(id), fd);
+      const notify = (job as any)?.pdfNotify;
+      if (notify?.whatsappNotifyUrl) {
+        const ok = window.confirm('Ticket actualizado. ¿Enviar PDF al administrador por WhatsApp?');
+        if (ok) window.open(notify.whatsappNotifyUrl, '_blank');
+      }
       navigate('/servicios');
     } catch (err: any) {
       setError(err.message || 'Error al guardar');
@@ -200,6 +205,14 @@ export default function EditServiceJob() {
               className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm bg-white focus:ring-2 focus:ring-corporate-light outline-none">
               <option value="contado">Al contado</option>
               <option value="plazo">A plazo</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-text-secondary mb-1">Estado pago cliente (notifica al admin)</label>
+            <select value={form.client_status} onChange={e => setForm(p => ({ ...p, client_status: e.target.value }))}
+              className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm bg-white focus:ring-2 focus:ring-corporate-light outline-none">
+              <option value="pendiente_pago">Pendiente de pago</option>
+              <option value="pagado">Cliente ya pagó</option>
             </select>
           </div>
           <div>
