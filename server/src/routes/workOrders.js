@@ -1,7 +1,24 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import db from '../db/database.js';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
 import { appendWorkOrderToExcel } from '../utils/workOrdersExcel.js';
+
+const BASE_URL = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || 'https://hidrourgencias.onrender.com';
+function getBaseUrl() {
+  return String(BASE_URL).replace(/\/$/, '');
+}
+
+function buildWhatsAppMessageWithLinks(wo, assignment, links) {
+  return `*Nueva orden de trabajo asignada*\n\n` +
+    `Orden: ${wo.id}\n` +
+    `Cliente: ${wo.client_name}\n` +
+    `Dirección: ${wo.address || '-'}\n` +
+    `Trabajo: ${wo.service_type_name || '-'}\n\n` +
+    `Seleccione una opción:\n\n` +
+    `[ACEPTAR ORDEN] ${links.aceptar}\n\n` +
+    `[RECHAZAR ORDEN] ${links.rechazar}`;
+}
 
 const router = Router();
 router.use(authMiddleware);
@@ -96,7 +113,7 @@ router.get('/notifications', async (req, res) => {
   try {
     if (!req.user?.id) return res.status(401).json({ error: 'No autorizado' });
     const rows = await db.prepare(`
-      SELECT id, type, title, message, read_at, created_at
+      SELECT id, type, title, message, ref_id, read_at, created_at
       FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50
     `).all(req.user.id);
     res.json(rows);
@@ -192,7 +209,10 @@ router.post('/', adminMiddleware, async (req, res) => {
 
     const woId = result.lastInsertRowid;
     for (const tid of techIds) {
-      await db.prepare('INSERT INTO work_order_assignments (work_order_id, technician_id) VALUES (?, ?)').run(woId, tid);
+      await db.prepare(`
+        INSERT INTO work_order_assignments (work_order_id, technician_id, assignment_status)
+        VALUES (?, ?, 'pendiente_confirmacion')
+      `).run(woId, tid);
     }
 
     appendWorkOrderToExcel(woId).catch(err => console.error('Excel append error:', err));
@@ -236,10 +256,61 @@ router.post('/:id/assign', adminMiddleware, async (req, res) => {
   }
 });
 
+router.get('/:id/whatsapp-links', adminMiddleware, async (req, res) => {
+  try {
+    const wo = await db.prepare(`
+      SELECT wo.*, wost.name as service_type_name
+      FROM work_orders wo
+      LEFT JOIN work_order_service_types wost ON wo.service_type_id = wost.id
+      WHERE wo.id = ?
+    `).get(req.params.id);
+    if (!wo) return res.status(404).json({ error: 'No encontrado' });
+    const assignments = await db.prepare(`
+      SELECT woa.*, u.display_name as technician_name, u.whatsapp_phone
+      FROM work_order_assignments woa
+      JOIN users u ON woa.technician_id = u.id
+      WHERE woa.work_order_id = ?
+    `).all(req.params.id);
+    const base = getBaseUrl();
+    const result = [];
+    for (const a of assignments || []) {
+      let token = a.confirm_token;
+      if (!token) {
+        token = crypto.randomBytes(24).toString('hex');
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        await db.prepare('UPDATE work_order_assignments SET confirm_token = ?, token_expires_at = ? WHERE id = ?')
+          .run(token, expiresAt, a.id);
+      }
+      const links = {
+        aceptar: `${base}/api/public/orden-confirmar?token=${token}&action=aceptar`,
+        rechazar: `${base}/api/public/orden-confirmar?token=${token}&action=rechazar`
+      };
+      const message = buildWhatsAppMessageWithLinks(wo, a, links);
+      const p = String(a.whatsapp_phone || '').replace(/\D/g, '');
+      const num = p.startsWith('56') ? p : '56' + p;
+      const waUrl = num ? `https://wa.me/${num}?text=${encodeURIComponent(message)}` : null;
+      result.push({
+        assignment_id: a.id,
+        technician_id: a.technician_id,
+        technician_name: a.technician_name,
+        whatsapp_phone: a.whatsapp_phone,
+        message,
+        wa_url: waUrl
+      });
+    }
+    res.json({ order_id: wo.id, links: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Error' });
+  }
+});
+
 router.put('/:id/send', adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    await db.prepare('UPDATE work_order_assignments SET sent_at = NOW() WHERE work_order_id = ?').run(id);
+    await db.prepare(`
+      UPDATE work_order_assignments SET sent_at = NOW(), assignment_status = 'pendiente_confirmacion'
+      WHERE work_order_id = ?
+    `).run(id);
     res.json({ message: 'Enviado' });
   } catch (err) {
     res.status(500).json({ error: 'Error' });
@@ -253,7 +324,11 @@ router.put('/assignments/:assignmentId/receive', async (req, res) => {
     if (!a) return res.status(404).json({ error: 'No encontrado' });
     if (a.technician_id !== req.user.id) return res.status(403).json({ error: 'Sin permisos' });
 
-    await db.prepare('UPDATE work_order_assignments SET read_at = NOW() WHERE id = ?').run(assignmentId);
+    await db.prepare(`
+      UPDATE work_order_assignments SET read_at = NOW(), assignment_status = 'confirmada',
+        fecha_confirmacion_tecnico = NOW(), metodo_confirmacion = 'app'
+      WHERE id = ?
+    `).run(assignmentId);
     const wo = await db.prepare(`
       SELECT wo.*, wost.name as service_type_name
       FROM work_orders wo
@@ -290,9 +365,13 @@ router.put('/assignments/:assignmentId/escalate', adminMiddleware, async (req, r
     const a = await db.prepare('SELECT * FROM work_order_assignments WHERE id = ?').get(assignmentId);
     if (!a) return res.status(404).json({ error: 'No encontrado' });
     const level = (a.escalation_level || 0) + 1;
-    await db.prepare('UPDATE work_order_assignments SET escalation_level = ?, reminder_sent_at = NOW() WHERE id = ?')
-      .run(level, assignmentId);
-    res.json({ message: 'Escalado', escalation_level: level });
+    const status = a.assignment_status || 'pendiente_confirmacion';
+    const markEscalada = status === 'pendiente_confirmacion';
+    await db.prepare(`
+      UPDATE work_order_assignments SET escalation_level = ?, reminder_sent_at = NOW()${markEscalada ? ", assignment_status = 'escalada'" : ''}
+      WHERE id = ?
+    `).run(level, assignmentId);
+    res.json({ message: markEscalada ? 'Escalada' : 'Recordatorio enviado', escalation_level: level });
   } catch (err) {
     res.status(500).json({ error: 'Error' });
   }

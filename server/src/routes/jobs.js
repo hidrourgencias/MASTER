@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import db from '../db/database.js';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
 import { saveJobPdf } from '../utils/generateJobPdf.js';
+import { saveComprobantePdf } from '../utils/generateComprobantePdf.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -237,7 +238,21 @@ router.post('/', upload.array('photos', 10), async (req, res) => {
     `).get(jobId);
     const photos = await db.prepare('SELECT * FROM service_job_photos WHERE service_job_id = ?').all(jobId);
     const techRow = await db.prepare('SELECT display_name FROM users WHERE id = ?').get(req.user.id);
-    const notify = await generatePdfAndNotifyUrl(jobId, job, photos, techRow?.display_name || '');
+    const techName = techRow?.display_name || 'Técnico';
+
+    // Notificar a administradores: técnico envió/cerró ticket
+    try {
+      const admins = await db.prepare('SELECT id FROM users WHERE role = ? AND active = 1').all('admin');
+      const msg = `Ticket #${jobId} - ${job.client_name} - ${job.job_service_name || 'Servicio'}. Técnico: ${techName}. Servicio finalizado, pendiente de aprobación.`;
+      for (const a of admins || []) {
+        await db.prepare(`
+          INSERT INTO notifications (user_id, type, title, message, created_at)
+          VALUES (?, 'TICKET_RECIBIDO', 'Nuevo ticket recibido', ?, NOW())
+        `).run(a.id, msg);
+      }
+    } catch (_) { /* ignorar si falla */ }
+
+    const notify = await generatePdfAndNotifyUrl(jobId, job, photos, techName);
     res.status(201).json({ ...job, photos, pdfNotify: notify });
   } catch (err) {
     console.error('Create job error:', err);
@@ -317,25 +332,41 @@ router.put('/:id', upload.array('photos', 5), async (req, res) => {
 async function sendPaymentNotification(db, technicianId, job, payAmount, scheduleLabel) {
   try {
     const msg = payAmount === 0
-      ? `Servicio de ${job.job_service_name || 'destape'} en "${job.client_name}". Modalidad: No pago por garantía. Estado: Por pagar.`
-      : `Servicio de ${job.job_service_name || 'destape'} en "${job.client_name}". Ha obtenido ingresos: $${Number(payAmount).toLocaleString('es-CL')}. Modalidad: ${scheduleLabel}. Estado: Por pagar.`;
+      ? `Ticket #${job.id} - ${job.job_service_name || 'Servicio'} en "${job.client_name}". Estado: No pago por garantía.`
+      : `Ticket #${job.id} - ${job.job_service_name || 'Servicio'} en "${job.client_name}". Administración te asignó: $${Number(payAmount).toLocaleString('es-CL')}. Estado: ${scheduleLabel}.`;
     await db.prepare(`
-      INSERT INTO notifications (user_id, type, title, message, created_at)
-      VALUES (?, 'PAGO_ASIGNADO', 'Pago asignado', ?, NOW())
-    `).run(technicianId, msg);
+      INSERT INTO notifications (user_id, type, title, message, ref_id, created_at)
+      VALUES (?, 'PAGO_ASIGNADO', 'Estado de pago asignado', ?, ?, NOW())
+    `).run(technicianId, msg, job.id);
   } catch (_) { /* tabla notifications puede no existir */ }
 }
 
-const VALID_PAYMENT_SCHEDULES = ['1_dia', '5_dias', '15_dias', '30_dias', '45_dias', 'inmediato_transferencia', 'inmediato_efectivo', 'garantia'];
+async function sendTicketPaidNotification(db, technicianId, job, payAmount, methodLabel) {
+  try {
+    const msg = `Ticket #${job.id} - ${job.job_service_name || 'Servicio'} en "${job.client_name}". Tu ticket fue pagado con éxito: $${Number(payAmount).toLocaleString('es-CL')} (${methodLabel}).`;
+    await db.prepare(`
+      INSERT INTO notifications (user_id, type, title, message, ref_id, created_at)
+      VALUES (?, 'PAGO_ASIGNADO', 'Ticket pagado con éxito', ?, ?, NOW())
+    `).run(technicianId, msg, job.id);
+  } catch (_) {}
+}
+
+const VALID_PAYMENT_SCHEDULES = [
+  'inmediato_transferencia', 'inmediato_efectivo', 'pendiente_credito', 'pendiente', 'garantia',
+  '1_dia', '5_dias', '15_dias', '30_dias', '45_dias'
+];
 
 function sanitizePaymentSchedule(v) {
-  return (v && VALID_PAYMENT_SCHEDULES.includes(String(v))) ? String(v) : '1_dia';
+  return (v && VALID_PAYMENT_SCHEDULES.includes(String(v))) ? String(v) : 'pendiente';
 }
 
 const PAYMENT_SCHEDULE_LABELS = {
-  '1_dia': '1 día', '5_dias': '5 días', '15_dias': '15 días', '30_dias': '30 días', '45_dias': '45 días',
-  'inmediato_transferencia': 'Pago inmediato (transferencia)', 'inmediato_efectivo': 'Pago inmediato (efectivo)',
-  'garantia': 'No pago por garantía'
+  'inmediato_transferencia': 'Pago transferencia inmediata',
+  'inmediato_efectivo': 'Pago en efectivo',
+  'pendiente_credito': 'Pendiente por trabajo a créditos',
+  'pendiente': 'Pendiente',
+  'garantia': 'No pago por garantía',
+  '1_dia': '1 día', '5_dias': '5 días', '15_dias': '15 días', '30_dias': '30 días', '45_dias': '45 días'
 };
 
 router.put('/:id/approve', authMiddleware, adminMiddleware, async (req, res) => {
@@ -432,6 +463,11 @@ router.put('/:id/mark-paid', authMiddleware, adminMiddleware, async (req, res) =
       ? (String(admin_payment_method).toLowerCase() === 'efectivo' ? 'Efectivo' : 'Transferencia')
       : (admin_payment_method || null);
 
+    const jobBefore = await db.prepare(`
+      SELECT j.*, js.name as job_service_name FROM service_jobs j
+      LEFT JOIN job_services js ON j.job_service_id = js.id WHERE j.id = ?
+    `).get(id);
+
     await db.prepare(`
       UPDATE service_jobs SET technician_paid = 1, technician_paid_at = NOW(),
         admin_payment_method = COALESCE(?, admin_payment_method), updated_at = NOW()
@@ -440,6 +476,11 @@ router.put('/:id/mark-paid', authMiddleware, adminMiddleware, async (req, res) =
 
     await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
       .run(req.user.id, 'PAY_TECHNICIAN', `Técnico pagado #${id}`);
+
+    if (jobBefore?.technician_id && Number(jobBefore.technician_payment || 0) > 0) {
+      const methodLabel = (method || 'Transferencia').toString();
+      await sendTicketPaidNotification(db, jobBefore.technician_id, jobBefore, Number(jobBefore.technician_payment), methodLabel);
+    }
 
     const job = await db.prepare(`
       SELECT j.*, js.name as job_service_name, u.display_name as technician_name
@@ -450,6 +491,144 @@ router.put('/:id/mark-paid', authMiddleware, adminMiddleware, async (req, res) =
     res.json({ ...job, photos });
   } catch (err) {
     res.status(500).json({ error: 'Error al marcar como pagado' });
+  }
+});
+
+const METODOS_PAGO_VALIDOS = ['efectivo', 'transferencia', 'contado', 'pagado', 'por_pagar'];
+
+router.put('/:id/confirmar-pago', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { monto_pago_tecnico, metodo_pago } = req.body;
+    const metodo = METODOS_PAGO_VALIDOS.includes(String(metodo_pago || '').toLowerCase())
+      ? String(metodo_pago).toLowerCase() : 'por_pagar';
+    const monto = parseFloat(monto_pago_tecnico) || 0;
+
+    const job = await db.prepare(`
+      SELECT j.*, js.name as job_service_name FROM service_jobs j
+      LEFT JOIN job_services js ON j.job_service_id = js.id WHERE j.id = ?
+    `).get(id);
+    if (!job) return res.status(404).json({ error: 'No encontrado' });
+
+    const payAmount = job.is_garantia === 1 ? 0 : monto;
+
+    await db.prepare(`
+      UPDATE service_jobs SET technician_payment = ?, admin_payment_method = ?,
+        ticket_status = 'pago_registrado', admin_payment_confirmed_at = NOW(),
+        estado_pago_tecnico = 'pendiente', updated_at = NOW()
+      WHERE id = ?
+    `).run(payAmount, metodo, id);
+
+    await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
+      .run(req.user.id, 'CONFIRMAR_PAGO', `Ticket #${id} - Pago registrado: $${payAmount} (${metodo})`);
+
+    if (job.technician_id) {
+      const msg = `Ticket #${id} - ${job.job_service_name || 'Servicio'} en "${job.client_name}". Monto: $${payAmount.toLocaleString('es-CL')}. Método: ${metodo}. Confirma tu recepción en la app.`;
+      await db.prepare(`
+        INSERT INTO notifications (user_id, type, title, message, ref_id, created_at)
+        VALUES (?, 'PAGO_ASIGNADO', 'Pago registrado - Confirma recepción', ?, ?, NOW())
+      `).run(job.technician_id, msg, id);
+    }
+
+    const updated = await db.prepare(`
+      SELECT j.*, js.name as job_service_name, u.display_name as technician_name
+      FROM service_jobs j LEFT JOIN job_services js ON j.job_service_id = js.id
+      LEFT JOIN users u ON j.technician_id = u.id WHERE j.id = ?
+    `).get(id);
+    const photos = await db.prepare('SELECT * FROM service_job_photos WHERE service_job_id = ?').all(id);
+    res.json({ ...updated, photos });
+  } catch (err) {
+    console.error('Confirmar pago error:', err);
+    res.status(500).json({ error: err.message || 'Error al confirmar pago' });
+  }
+});
+
+router.put('/:id/estado-pago-tecnico', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { estado_pago_tecnico } = req.body;
+    const estado = ['recepcionado', 'pendiente'].includes(String(estado_pago_tecnico || '').toLowerCase())
+      ? String(estado_pago_tecnico).toLowerCase() : 'pendiente';
+
+    const job = await db.prepare('SELECT * FROM service_jobs WHERE id = ?').get(id);
+    if (!job) return res.status(404).json({ error: 'No encontrado' });
+    if (job.technician_id !== req.user.id) return res.status(403).json({ error: 'Sin permisos' });
+
+    await db.prepare(`
+      UPDATE service_jobs SET estado_pago_tecnico = ?,
+        technician_payment_confirmed_at = CASE WHEN ? = 'recepcionado' THEN NOW() ELSE technician_payment_confirmed_at END,
+        updated_at = NOW()
+      WHERE id = ?
+    `).run(estado, estado, id);
+
+    const updated = await db.prepare(`
+      SELECT j.*, js.name as job_service_name, u.display_name as technician_name
+      FROM service_jobs j LEFT JOIN job_services js ON j.job_service_id = js.id
+      LEFT JOIN users u ON j.technician_id = u.id WHERE j.id = ?
+    `).get(id);
+    const photos = await db.prepare('SELECT * FROM service_job_photos WHERE service_job_id = ?').all(id);
+    res.json({ ...updated, photos });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Error' });
+  }
+});
+
+router.get('/:id/comprobante-pdf', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const job = await db.prepare(`
+      SELECT j.*, js.name as job_service_name FROM service_jobs j
+      LEFT JOIN job_services js ON j.job_service_id = js.id WHERE j.id = ?
+    `).get(id);
+    if (!job) return res.status(404).json({ error: 'No encontrado' });
+    if (req.user.role !== 'admin' && job.technician_id !== req.user.id) {
+      return res.status(403).json({ error: 'Sin permisos' });
+    }
+
+    const techRow = await db.prepare('SELECT display_name FROM users WHERE id = ?').get(job.technician_id);
+    const technicianName = techRow?.display_name || 'Técnico';
+    const settings = await db.prepare("SELECT value FROM settings WHERE key = 'company_name'").get();
+    const companyName = settings?.value || 'Hidrourgencias SpA';
+
+    let filename = job.pdf_comprobante;
+    if (!filename || !fs.existsSync(path.join(__dirname, '..', '..', 'uploads', 'jobs', 'pdfs', filename))) {
+      filename = await saveComprobantePdf(Number(id), job, technicianName, companyName);
+      await db.prepare('UPDATE service_jobs SET pdf_comprobante = ? WHERE id = ?').run(filename, id);
+    }
+
+    const filepath = path.join(__dirname, '..', '..', 'uploads', 'jobs', 'pdfs', filename);
+    if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'PDF no generado' });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="comprobante_${id}.pdf"`);
+    res.sendFile(path.resolve(filepath));
+  } catch (err) {
+    console.error('Comprobante PDF error:', err);
+    res.status(500).json({ error: 'Error al generar comprobante' });
+  }
+});
+
+router.post('/:id/generar-comprobante', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const job = await db.prepare(`
+      SELECT j.*, js.name as job_service_name FROM service_jobs j
+      LEFT JOIN job_services js ON j.job_service_id = js.id WHERE j.id = ?
+    `).get(id);
+    if (!job) return res.status(404).json({ error: 'No encontrado' });
+
+    const techRow = await db.prepare('SELECT display_name FROM users WHERE id = ?').get(job.technician_id);
+    const technicianName = techRow?.display_name || 'Técnico';
+    const settings = await db.prepare("SELECT value FROM settings WHERE key = 'company_name'").get();
+    const companyName = settings?.value || 'Hidrourgencias SpA';
+
+    const filename = await saveComprobantePdf(Number(id), job, technicianName, companyName);
+    await db.prepare('UPDATE service_jobs SET pdf_comprobante = ? WHERE id = ?').run(filename, id);
+
+    res.json({ success: true, filename: `comprobante_${id}.pdf` });
+  } catch (err) {
+    console.error('Generar comprobante error:', err);
+    res.status(500).json({ error: 'Error al generar comprobante' });
   }
 });
 

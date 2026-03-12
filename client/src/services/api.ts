@@ -140,6 +140,27 @@ export const api = {
     }),
   markJobPaid: (id: number, data?: { admin_payment_method?: string }) =>
     request<any>(`/jobs/${id}/mark-paid`, { method: 'PUT', body: JSON.stringify(data || {}) }),
+  confirmarPago: (id: number, data: { monto_pago_tecnico: number; metodo_pago: string }) =>
+    request<any>(`/jobs/${id}/confirmar-pago`, { method: 'PUT', body: JSON.stringify(data) }),
+  setEstadoPagoTecnico: (id: number, estado_pago_tecnico: 'recepcionado' | 'pendiente') =>
+    request<any>(`/jobs/${id}/estado-pago-tecnico`, { method: 'PUT', body: JSON.stringify({ estado_pago_tecnico }) }),
+  generarComprobante: (id: number) =>
+    request<any>(`/jobs/${id}/generar-comprobante`, { method: 'POST' }),
+  downloadComprobantePdf: async (id: number) => {
+    const token = getToken();
+    const baseOrigin = getServerOrigin();
+    const res = await fetch(`${baseOrigin}/api/jobs/${id}/comprobante-pdf`, {
+      headers: { Authorization: `Bearer ${token}` } as any
+    });
+    if (!res.ok) throw new Error('Error al descargar comprobante');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `comprobante_${id}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
   deleteJob: (id: number) =>
     request<any>(`/jobs/${id}`, { method: 'DELETE' }),
 
@@ -154,6 +175,7 @@ export const api = {
   assignWorkOrderTechnician: (woId: number, technicianId: number) =>
     request<any>(`/work-orders/${woId}/assign`, { method: 'POST', body: JSON.stringify({ technician_id: technicianId }) }),
   sendWorkOrder: (id: number) => request<any>(`/work-orders/${id}/send`, { method: 'PUT' }),
+  getWorkOrderWhatsAppLinks: (id: number) => request<{ order_id: number; links: any[] }>(`/work-orders/${id}/whatsapp-links`),
   getWorkOrderServiceTypes: () => request<any[]>('/work-orders/service-types'),
   createWorkOrderServiceType: (name: string) => request<any>('/work-orders/service-types', { method: 'POST', body: JSON.stringify({ name }) }),
   syncWorkOrderServiceTypes: () => request<any>('/work-orders/service-types/sync-from-job-services', { method: 'POST', body: JSON.stringify({}) }),
@@ -164,6 +186,8 @@ export const api = {
     request<any>(`/work-orders/assignments/${assignmentId}/receive`, { method: 'PUT' }),
   escalateWorkOrderAssignment: (assignmentId: number) =>
     request<any>(`/work-orders/assignments/${assignmentId}/escalate`, { method: 'PUT' }),
+  adminApproveWorkOrderAssignment: (assignmentId: number, approved: boolean) =>
+    request<any>(`/work-orders/assignments/${assignmentId}/admin-approve`, { method: 'PUT', body: JSON.stringify({ approved }) }),
   getEquipmentCatalog: () => request<any[]>('/admin/equipment'),
   getAdminEquipment: () => request<any[]>('/admin/equipment'),
   createEquipment: (name: string, category: string) =>

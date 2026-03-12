@@ -275,11 +275,22 @@ export async function initDatabase() {
   await addCol('service_jobs', 'client_phone', "TEXT DEFAULT ''");
   await addCol('service_jobs', 'is_garantia', 'INTEGER DEFAULT 0');
   await addCol('service_jobs', 'pdf_token', "TEXT DEFAULT ''");
+  await addCol('service_jobs', 'estado_pago_tecnico', "TEXT DEFAULT 'pendiente'");
+  await addCol('service_jobs', 'admin_payment_confirmed_at', 'TIMESTAMP');
+  await addCol('service_jobs', 'technician_payment_confirmed_at', 'TIMESTAMP');
+  await addCol('service_jobs', 'pdf_comprobante', "TEXT DEFAULT ''");
+  await addCol('notifications', 'ref_id', 'INTEGER');
 
   await addCol('work_order_assignments', 'sent_at', 'TIMESTAMP');
   await addCol('work_order_assignments', 'escalation_level', 'INTEGER DEFAULT 0');
   await addCol('work_order_assignments', 'reminder_sent_at', 'TIMESTAMP');
   await addCol('work_order_assignments', 'admin_approved_at', 'TIMESTAMP');
+  await addCol('work_order_assignments', 'confirm_token', "TEXT DEFAULT ''");
+  await addCol('work_order_assignments', 'token_expires_at', 'TIMESTAMP');
+  await addCol('work_order_assignments', 'fecha_confirmacion_tecnico', 'TIMESTAMP');
+  await addCol('work_order_assignments', 'metodo_confirmacion', "TEXT DEFAULT ''");
+  await addCol('work_order_assignments', 'assignment_status', "TEXT DEFAULT 'pendiente_confirmacion'");
+  await addCol('work_order_assignments', 'last_reminder_at', 'TIMESTAMP');
   await addCol('work_orders', 'address', 'TEXT DEFAULT \'\'');
   await addCol('work_orders', 'schedule', 'TEXT DEFAULT \'\'');
   await addCol('work_orders', 'client_phone', 'TEXT DEFAULT \'\'');
@@ -300,6 +311,24 @@ export async function initDatabase() {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS payment_methods (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      active INTEGER DEFAULT 1,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  const pmCount = await pool.query("SELECT COUNT(*) as count FROM payment_methods");
+  if (parseInt(pmCount.rows[0].count) === 0) {
+    for (const name of ['Transferencia', 'Efectivo', 'Cheque', 'Orden de Compra']) {
+      try {
+        await pool.query("INSERT INTO payment_methods (name) VALUES ($1)", [name]);
+      } catch (_) {}
+    }
+    console.log('Métodos de pago iniciales creados.');
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS postventa_reminders (
@@ -414,7 +443,9 @@ export async function initDatabase() {
     ['ocr_auto_brightness', '1'],
     ['ocr_confidence_threshold', '0.7'],
     ['company_name', 'Hidrourgencias SpA'],
-    ['whatsapp_number', '+56940918672']
+    ['whatsapp_number', '+56940918672'],
+    ['tiempo_recordatorio_minutos', '5'],
+    ['tiempo_escalamiento_minutos', '10']
   ];
   for (const [key, value] of defaultSettings) {
     await pool.query(

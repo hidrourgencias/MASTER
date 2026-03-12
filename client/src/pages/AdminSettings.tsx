@@ -94,6 +94,22 @@ export default function AdminSettings() {
           <input type="text" value={settings.whatsapp_number || ''} onChange={e => update('whatsapp_number', e.target.value)}
             className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm focus:ring-2 focus:ring-corporate-light outline-none" />
         </div>
+
+        <div className="border-t pt-4 mt-4">
+          <p className="text-xs font-medium text-text-secondary mb-2">Órdenes de trabajo (recordatorios y escalamiento)</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Tiempo recordatorio (min)</label>
+              <input type="number" min="1" max="60" value={settings.tiempo_recordatorio_minutos || '5'} onChange={e => update('tiempo_recordatorio_minutos', e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Tiempo escalamiento (min)</label>
+              <input type="number" min="1" max="120" value={settings.tiempo_escalamiento_minutos || '10'} onChange={e => update('tiempo_escalamiento_minutos', e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border text-sm" />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Payment Methods */}

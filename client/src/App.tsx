@@ -24,6 +24,7 @@ import AdminWorkOrders from './pages/AdminWorkOrders';
 import AdminUsers from './pages/AdminUsers';
 import Quotes from './pages/Quotes';
 import QuoteForm from './pages/QuoteForm';
+import MisLiquidaciones from './pages/MisLiquidaciones';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, token } = useAuth();
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="cotizaciones/editar/:id" element={<VentasRoute><QuoteForm /></VentasRoute>} />
 
         <Route path="perfil" element={<Profile />} />
+        <Route path="liquidaciones" element={<MisLiquidaciones />} />
         <Route path="soporte" element={<Support />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -52,6 +52,8 @@ export default function AdminWorkOrders() {
   });
   const [saving, setSaving] = useState(false);
   const [sendModal, setSendModal] = useState<{ wo: any; selected: number[] } | null>(null);
+  const [reasignModal, setReasignModal] = useState<{ wo: any; assignment: any } | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string>(''); // '' = todas, pendiente_confirmacion, confirmada, rechazada, escalada
 
   useEffect(() => { load(); }, []);
   useEffect(() => {
@@ -59,7 +61,7 @@ export default function AdminWorkOrders() {
     return () => clearInterval(t);
   }, []);
 
-  async function load() {
+  async function load(): Promise<any[]> {
     try {
       const [o, st, tech, at] = await Promise.all([
         api.getWorkOrders(),
@@ -89,8 +91,10 @@ export default function AdminWorkOrders() {
         setShowForm(true);
         navigate(location.pathname, { replace: true, state: {} });
       }
+      return o || [];
     } catch (e) { console.error(e); }
     setLoading(false);
+    return [];
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -139,15 +143,21 @@ export default function AdminWorkOrders() {
     });
   }
 
-  function confirmSendToTechnicians() {
+  async function confirmSendToTechnicians() {
     if (!sendModal) return;
-    const text = buildWhatsAppWorkOrderMsg(sendModal.wo);
-    const toSend = (sendModal.wo.assignments || []).filter((a: any) => sendModal.selected.includes(a.technician_id));
-    toSend.forEach((a: any) => {
-      const phone = a.whatsapp_phone || '';
-      if (phone) openWhatsApp(phone, text);
-    });
-    api.sendWorkOrder(sendModal.wo.id).catch(() => {});
+    try {
+      const { links } = await api.getWorkOrderWhatsAppLinks(sendModal.wo.id);
+      const toSend = (sendModal.wo.assignments || []).filter((a: any) => sendModal.selected.includes(a.technician_id));
+      for (const a of toSend) {
+        const linkData = links.find((l: any) => l.technician_id === a.technician_id);
+        if (linkData?.wa_url) window.open(linkData.wa_url, '_blank');
+        else if (a.whatsapp_phone) openWhatsApp(a.whatsapp_phone, buildWhatsAppWorkOrderMsg(sendModal.wo));
+      }
+      await api.sendWorkOrder(sendModal.wo.id);
+      load();
+    } catch (e: any) {
+      alert(e.message || 'Error al enviar');
+    }
     setSendModal(null);
   }
 
@@ -156,13 +166,34 @@ export default function AdminWorkOrders() {
     return (Date.now() - new Date(created).getTime()) / 60000;
   }
 
+  const [escalamientoMin, setEscalamientoMin] = useState(10);
+  const [recordatorioMin, setRecordatorioMin] = useState(5);
+
+  useEffect(() => {
+    api.getSettings().then((s: any) => {
+      const r = parseInt(s?.tiempo_recordatorio_minutos, 10);
+      const e = parseInt(s?.tiempo_escalamiento_minutos, 10);
+      if (!isNaN(r)) setRecordatorioMin(r);
+      if (!isNaN(e)) setEscalamientoMin(e);
+    }).catch(() => {});
+  }, []);
+
   function getCountdown(assignment: any) {
+    const status = assignment.assignment_status || 'pendiente_confirmacion';
+    if (['confirmada', 'rechazada', 'escalada'].includes(status)) return null;
     const sent = assignment.sent_at || assignment.created_at;
     const elapsed = getElapsedMin(sent);
     if (assignment.read_at) return null;
-    if (elapsed >= 10) return { min: 0, overdue: true };
-    return { min: Math.max(0, Math.ceil(10 - elapsed)), overdue: false };
+    if (elapsed >= escalamientoMin) return { min: 0, overdue: true };
+    return { min: Math.max(0, Math.ceil(escalamientoMin - elapsed)), overdue: false };
   }
+
+  const STATUS_LABELS: Record<string, string> = {
+    pendiente_confirmacion: 'Pendiente',
+    confirmada: 'Confirmada',
+    rechazada: 'Rechazada',
+    escalada: 'Escalada'
+  };
 
   if (loading) {
     return (
@@ -257,8 +288,34 @@ export default function AdminWorkOrders() {
         )}
       </AnimatePresence>
 
+      {/* Filtro por estado */}
+      <div className="flex flex-wrap gap-2">
+        {[
+          { value: '', label: 'Todas' },
+          { value: 'pendiente_confirmacion', label: 'Pendientes' },
+          { value: 'confirmada', label: 'Confirmadas' },
+          { value: 'rechazada', label: 'Rechazadas' },
+          { value: 'escalada', label: 'Escaladas' }
+        ].map(({ value, label }) => (
+          <button
+            key={value || 'all'}
+            onClick={() => setFilterStatus(value)}
+            className={`px-3 py-1.5 rounded-xl text-sm font-medium transition ${
+              filterStatus === value ? 'bg-corporate-blue text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="space-y-3">
-        {orders.map(wo => (
+        {orders
+          .filter(wo => {
+            if (!filterStatus) return true;
+            return (wo.assignments || []).some((a: any) => (a.assignment_status || 'pendiente_confirmacion') === filterStatus);
+          })
+          .map(wo => (
           <motion.div key={wo.id} layout className="bg-white rounded-xl shadow-sm border overflow-hidden">
             <button onClick={() => setExpanded(expanded === wo.id ? null : wo.id)} className="w-full p-4 flex items-start justify-between text-left">
               <div>
@@ -295,22 +352,29 @@ export default function AdminWorkOrders() {
                   <div className="space-y-2">
                     {wo.assignments?.map((a: any) => {
                       const cd = getCountdown(a);
-                      const received = !!a.read_at;
+                      const status = a.assignment_status || 'pendiente_confirmacion';
+                      const received = ['confirmada'].includes(status) || !!a.read_at;
+                      const rejected = status === 'rechazada';
+                      const escalated = status === 'escalada';
                       return (
                         <div key={a.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
                           <div className="flex items-center gap-3">
                             {received ? (
                               <span className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white"><Check size={16} /></span>
-                            ) : (
+                            ) : rejected ? (
                               <span className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center text-white"><X size={16} /></span>
+                            ) : escalated ? (
+                              <span className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white" title="Escalada"><AlertTriangle size={16} /></span>
+                            ) : (
+                              <span className="w-8 h-8 rounded-full bg-amber-400 flex items-center justify-center text-white"><Clock size={16} /></span>
                             )}
                             <div>
                               <p className="font-medium text-sm">{a.technician_name}</p>
-                              <p className="text-xs text-text-secondary">{a.whatsapp_phone || 'Sin WhatsApp'}</p>
+                              <p className="text-xs text-text-secondary">{a.whatsapp_phone || 'Sin WhatsApp'} · {STATUS_LABELS[status] || status}</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            {!received && cd && (
+                            {!received && !rejected && !escalated && cd && (
                               <>
                                 {cd.overdue ? (
                                   <span className="text-xs text-amber-600 flex items-center gap-1"><AlertTriangle size={14} /> Escalar</span>
@@ -331,7 +395,31 @@ export default function AdminWorkOrders() {
                               </>
                             )}
                             {received && (
-                              <span className="text-xs text-green-600 font-medium">Recibido</span>
+                              <>
+                                <span className="text-xs text-green-600 font-medium">Confirmada</span>
+                                {a.admin_approved_at ? (
+                                  <span className="text-xs text-text-secondary">· Aprobada</span>
+                                ) : (
+                                  <div className="flex gap-1">
+                                    <button onClick={async () => { try { await api.adminApproveWorkOrderAssignment(a.id, true); load(); } catch {} }} className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs">Aprobar</button>
+                                    <button onClick={async () => { try { await api.adminApproveWorkOrderAssignment(a.id, false); load(); } catch {} }} className="px-2 py-1 rounded bg-red-100 text-red-700 text-xs">Desaprobar</button>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                            {rejected && (
+                              <span className="text-xs text-red-600 font-medium">Rechazada</span>
+                            )}
+                            {escalated && (
+                              <>
+                                <span className="text-xs text-amber-600 font-medium">Escalada</span>
+                                <button
+                                  onClick={() => setReasignModal({ wo, assignment: a })}
+                                  className="px-2 py-1 rounded-lg bg-corporate-blue text-white text-xs font-medium"
+                                >
+                                  Reasignar
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -428,6 +516,53 @@ export default function AdminWorkOrders() {
               >
                 Enviar a {sendModal.selected.length} contacto(s)
               </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Modal: Reasignar técnico (órdenes escaladas) */}
+      {reasignModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col"
+          >
+            <div className="p-4 border-b flex items-center justify-between">
+              <h3 className="font-semibold text-lg">Reasignar técnico</h3>
+              <button onClick={() => setReasignModal(null)} className="p-2 rounded-lg hover:bg-gray-100">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="px-4 pt-2 text-sm text-text-secondary">
+              Orden #{reasignModal.wo.id} · {reasignModal.assignment.technician_name} no respondió
+            </p>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {technicians
+                .filter((t: any) => t.id !== reasignModal.assignment.technician_id)
+                .map((t: any) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await api.assignWorkOrderTechnician(reasignModal.wo.id, t.id);
+                        setReasignModal(null);
+                        const updatedOrders = await load();
+                        const updated = updatedOrders.find((o: any) => o.id === reasignModal.wo.id) || reasignModal.wo;
+                        setExpanded(reasignModal.wo.id);
+                        setSendModal({ wo: updated, selected: [t.id] });
+                      } catch (e: any) {
+                        alert(e.message || 'Error al reasignar');
+                      }
+                    }}
+                    className="w-full p-3 rounded-xl border border-gray-200 hover:bg-corporate-light/10 hover:border-corporate-light text-left"
+                  >
+                    <p className="font-medium text-sm">{t.display_name}</p>
+                    <p className="text-xs text-text-secondary">{t.whatsapp_phone || 'Sin WhatsApp'}</p>
+                  </button>
+                ))}
             </div>
           </motion.div>
         </div>

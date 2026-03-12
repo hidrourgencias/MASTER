@@ -157,7 +157,7 @@ router.get('/export-payments', async (req, res) => {
       j.client_name as "Cliente", j.client_type as "Tipo_Cliente", j.address_street as "Calle",
       j.address_number as "Número", j.address_comuna as "Comuna", j.amount as "Cobro_Cliente",
       j.technician_payment as "Pago_Técnico", j.admin_payment_method as "Método_Pago",
-      j.admin_payment_schedule as "Contado_Plazo", j.admin_payment_notes as "Observaciones_Pago",
+      j.admin_payment_schedule as "Estado_Pago_Admin", j.admin_payment_notes as "Observaciones_Pago",
       j.ticket_status as "Estado", CASE WHEN j.technician_paid = 1 THEN 'Pagado' ELSE 'Pendiente' END as "Pago_Técnico_Estado",
       j.created_at as "Fecha_Registro"
       FROM service_jobs j

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Receipt, BarChart3, Shield, User, Users, Menu, X, LogOut, Settings, FileText, Phone, Wrench, Briefcase, DollarSign, ClipboardList, Send, FileSignature, ClipboardCheck } from 'lucide-react';
+import { Home, Receipt, BarChart3, Shield, User, Users, Menu, X, LogOut, Settings, FileText, Phone, Wrench, Briefcase, DollarSign, ClipboardList, Send, FileSignature, ClipboardCheck, FileDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type AppModule = 'gastos' | 'ordenes' | 'ventas';
@@ -34,6 +34,7 @@ export default function Layout() {
   const ordenesNavItems = [
     { to: '/', icon: Home, label: 'Inicio' },
     { to: '/servicios', icon: Briefcase, label: 'Servicios' },
+    ...(!isAdmin ? [{ to: '/liquidaciones', icon: FileDown, label: 'Liquidaciones' }] : []),
     ...(isAdmin ? [{ to: '/admin/ordenes-trabajo', icon: Send, label: 'Órdenes' }] : []),
   ];
 
@@ -120,6 +121,7 @@ export default function Layout() {
                 <p className="px-5 py-2 text-xs font-semibold text-text-secondary uppercase mt-4">Órdenes y Servicios</p>
                 <DrawerLink to="/" icon={Home} label="Inicio" onClick={() => setDrawerOpen(false)} />
                 <DrawerLink to="/servicios" icon={Briefcase} label="Mis Servicios" onClick={() => setDrawerOpen(false)} />
+                {!isAdmin && <DrawerLink to="/liquidaciones" icon={FileDown} label="Mis Liquidaciones" onClick={() => setDrawerOpen(false)} />}
                 {isAdmin && (
                   <>
                     <DrawerLink to="/admin/ordenes-trabajo" icon={Send} label="Órdenes de Trabajo" onClick={() => setDrawerOpen(false)} />

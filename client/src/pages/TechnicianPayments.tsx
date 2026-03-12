@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { DollarSign, Check, Camera, ChevronDown, ChevronUp, Download, FileText, X } from 'lucide-react';
+import { DollarSign, Check, Camera, ChevronDown, ChevronUp, Download, FileText, X, FileDown } from 'lucide-react';
 import { api, getUploadsUrl } from '../services/api';
 import { formatCurrency, formatDate, clientTypeLabel } from '../utils/format';
 
@@ -16,13 +16,24 @@ export default function TechnicianPayments() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
-  const VALID_SCHEDULES = ['1_dia', '5_dias', '15_dias', '30_dias', '45_dias', 'inmediato_transferencia', 'inmediato_efectivo', 'garantia'];
-  const [form, setForm] = useState({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: '1_dia' as string, admin_payment_notes: '' });
+  const VALID_SCHEDULES = ['inmediato_transferencia', 'inmediato_efectivo', 'pendiente_credito', 'pendiente', 'garantia', '1_dia', '5_dias', '15_dias', '30_dias', '45_dias'];
+  const SCHEDULE_LABELS: Record<string, string> = {
+    inmediato_transferencia: 'Pago transferencia inmediata',
+    inmediato_efectivo: 'Pago en efectivo',
+    pendiente_credito: 'Pendiente por trabajo a créditos',
+    pendiente: 'Pendiente',
+    garantia: 'No pago por garantía',
+    '1_dia': '1 día', '5_dias': '5 días', '15_dias': '15 días', '30_dias': '30 días', '45_dias': '45 días'
+  };
+  const [form, setForm] = useState({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: 'pendiente' as string, admin_payment_notes: '' });
   const [filter, setFilter] = useState<'pending' | 'paid' | 'all'>('pending');
   const [exporting, setExporting] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<{ id: number; name: string }[]>([]);
   const [markPaidModal, setMarkPaidModal] = useState<{ jobId: number } | null>(null);
   const [markPaidMethod, setMarkPaidMethod] = useState<'Efectivo' | 'Transferencia'>('Transferencia');
+  const [confirmarPagoModal, setConfirmarPagoModal] = useState<{ job: any } | null>(null);
+  const [confirmarForm, setConfirmarForm] = useState({ monto_pago_tecnico: '', metodo_pago: 'por_pagar' });
+  const [generatingPdf, setGeneratingPdf] = useState<number | null>(null);
 
   useEffect(() => { load(); }, []);
 
@@ -50,7 +61,7 @@ export default function TechnicianPayments() {
         admin_payment_notes: form.admin_payment_notes
       });
       setEditing(null);
-      setForm({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: '1_dia', admin_payment_notes: '' });
+      setForm({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: 'pendiente', admin_payment_notes: '' });
       load();
     } catch (e: any) {
       alert(e.message || 'Error');
@@ -68,7 +79,7 @@ export default function TechnicianPayments() {
         admin_payment_notes: form.admin_payment_notes
       });
       setEditing(null);
-      setForm({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: '1_dia', admin_payment_notes: '' });
+      setForm({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: 'pendiente', admin_payment_notes: '' });
       load();
     } catch (e: any) {
       alert(e.message || 'Error');
@@ -83,6 +94,32 @@ export default function TechnicianPayments() {
     } catch (e: any) {
       alert(e.message || 'Error');
     }
+  }
+
+  async function handleConfirmarPago() {
+    if (!confirmarPagoModal) return;
+    try {
+      await api.confirmarPago(confirmarPagoModal.job.id, {
+        monto_pago_tecnico: parseFloat(confirmarForm.monto_pago_tecnico) || 0,
+        metodo_pago: confirmarForm.metodo_pago
+      });
+      setConfirmarPagoModal(null);
+      setConfirmarForm({ monto_pago_tecnico: '', metodo_pago: 'por_pagar' });
+      load();
+    } catch (e: any) {
+      alert(e.message || 'Error');
+    }
+  }
+
+  async function handleGenerarComprobante(jobId: number) {
+    setGeneratingPdf(jobId);
+    try {
+      await api.generarComprobante(jobId);
+      await api.downloadComprobantePdf(jobId);
+    } catch (e: any) {
+      alert(e.message || 'Error al generar comprobante');
+    }
+    setGeneratingPdf(null);
   }
 
   async function exportPayments() {
@@ -204,7 +241,26 @@ export default function TechnicianPayments() {
                           </p>
                         </div>
                         <div className="flex flex-col items-end gap-2">
-                          {editing === job.id ? (
+                          {(editing === job.id || confirmarPagoModal?.job?.id === job.id) ? (
+                            confirmarPagoModal?.job?.id === job.id ? (
+                              <div className="space-y-2 text-right bg-blue-50 -m-2 p-3 rounded-lg border border-blue-200">
+                                <p className="text-xs font-semibold text-corporate-blue">Asignación de Pago al Técnico</p>
+                                <input type="number" placeholder="Monto pago técnico" value={confirmarForm.monto_pago_tecnico} onChange={e => setConfirmarForm(p => ({ ...p, monto_pago_tecnico: e.target.value }))}
+                                  className="w-32 px-2 py-1 rounded border text-sm" />
+                                <select value={confirmarForm.metodo_pago} onChange={e => setConfirmarForm(p => ({ ...p, metodo_pago: e.target.value }))}
+                                  className="w-36 px-2 py-1 rounded border text-sm">
+                                  <option value="efectivo">Efectivo</option>
+                                  <option value="transferencia">Transferencia</option>
+                                  <option value="contado">Contado</option>
+                                  <option value="pagado">Pagado</option>
+                                  <option value="por_pagar">Por pagar</option>
+                                </select>
+                                <div className="flex gap-1 justify-end pt-1">
+                                  <button onClick={() => { setConfirmarPagoModal(null); setConfirmarForm({ monto_pago_tecnico: '', metodo_pago: 'por_pagar' }); }} className="text-xs bg-gray-400 text-white px-2 py-1 rounded">Cancelar</button>
+                                  <button onClick={handleConfirmarPago} className="text-xs bg-green-600 text-white px-2 py-1 rounded font-semibold">Confirmar Pago</button>
+                                </div>
+                              </div>
+                            ) : (
                             <div className="space-y-2 text-right">
                               <input type="number" placeholder="Cobro cliente" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))}
                                 className="w-28 px-2 py-1 rounded border text-sm" />
@@ -218,15 +274,17 @@ export default function TechnicianPayments() {
                                 ))}
                               </select>
                               <select value={form.admin_payment_schedule} onChange={e => setForm(p => ({ ...p, admin_payment_schedule: e.target.value }))}
-                                className="w-36 px-2 py-1 rounded border text-sm">
+                                className="w-48 px-2 py-1 rounded border text-sm">
+                                <option value="inmediato_transferencia">Pago transferencia inmediata</option>
+                                <option value="inmediato_efectivo">Pago en efectivo</option>
+                                <option value="pendiente_credito">Pendiente por trabajo a créditos</option>
+                                <option value="pendiente">Pendiente</option>
+                                <option value="garantia">No pago por garantía</option>
                                 <option value="1_dia">1 día</option>
                                 <option value="5_dias">5 días</option>
                                 <option value="15_dias">15 días</option>
                                 <option value="30_dias">30 días</option>
                                 <option value="45_dias">45 días</option>
-                                <option value="inmediato_transferencia">Inmediato (transferencia)</option>
-                                <option value="inmediato_efectivo">Inmediato (efectivo)</option>
-                                <option value="garantia">No pago por garantía</option>
                               </select>
                               <input type="text" placeholder="Observaciones pago" value={form.admin_payment_notes} onChange={e => setForm(p => ({ ...p, admin_payment_notes: e.target.value }))}
                                 className="w-28 px-2 py-1 rounded border text-sm" />
@@ -236,10 +294,11 @@ export default function TechnicianPayments() {
                                 ) : (
                                   <button onClick={() => handleSetPayment(job.id)} className="text-xs bg-blue-600 text-white px-2 py-1 rounded">Guardar</button>
                                 )}
-                                <button onClick={() => { setEditing(null); setForm({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: '1_dia', admin_payment_notes: '' }); }}
+                                <button onClick={() => { setEditing(null); setForm({ amount: '', technician_payment: '', admin_payment_method: '', admin_payment_schedule: 'pendiente', admin_payment_notes: '' }); }}
                                   type="button" className="text-xs bg-gray-400 text-white px-2 py-1 rounded hover:bg-gray-500">Cancelar</button>
                               </div>
                             </div>
+                            )
                           ) : (
                             <>
                               {job.is_garantia === 1 ? (
@@ -249,12 +308,12 @@ export default function TechnicianPayments() {
                                   <p className="font-bold text-corporate-blue">{formatCurrency(Number(job.technician_payment || 0))}</p>
                                   {job.admin_payment_notes && <p className="text-xs text-text-secondary max-w-[120px] truncate" title={job.admin_payment_notes}>{job.admin_payment_notes}</p>}
                                   {!job.technician_paid ? (
-                                    <div className="flex gap-1">
+                                    <div className="flex gap-1 flex-wrap">
                                       <button onClick={() => { setEditing(job.id); const s = job.admin_payment_schedule; setForm({
                                         amount: String(job.amount || ''),
                                         technician_payment: String(job.technician_payment || ''),
                                         admin_payment_method: job.admin_payment_method || '',
-                                        admin_payment_schedule: VALID_SCHEDULES.includes(s) ? s : '1_dia',
+                                        admin_payment_schedule: VALID_SCHEDULES.includes(s) ? s : 'pendiente',
                                         admin_payment_notes: job.admin_payment_notes || ''
                                       }); }}
                                         className="text-xs text-corporate-blue hover:underline flex items-center gap-0.5">
@@ -269,7 +328,19 @@ export default function TechnicianPayments() {
                                   ) : (
                                     <span className="text-xs text-green-600 font-medium">Pagado {job.admin_payment_method ? `(${job.admin_payment_method})` : ''}</span>
                                   )}
+                                  {['pago_registrado', 'aprobado'].includes(job.ticket_status) && Number(job.technician_payment || 0) > 0 && (
+                                    <button onClick={() => handleGenerarComprobante(job.id)} disabled={generatingPdf === job.id}
+                                      className="mt-1 w-full flex items-center justify-center gap-1 text-xs bg-corporate-blue text-white px-2 py-1 rounded hover:bg-[#002244] disabled:opacity-50">
+                                      <FileDown size={12} /> {generatingPdf === job.id ? 'Generando...' : 'Comprobante PDF'}
+                                    </button>
+                                  )}
                                 </>
+                              )}
+                              {job.ticket_status === 'pendiente' && !job.is_garantia && (
+                                <button onClick={() => { setConfirmarPagoModal({ job }); setConfirmarForm({ monto_pago_tecnico: String(job.technician_payment || ''), metodo_pago: (job.admin_payment_method || 'por_pagar').toLowerCase() }); }}
+                                  className="text-xs text-corporate-blue hover:underline flex items-center gap-0.5 mt-1">
+                                  Asignar Pago
+                                </button>
                               )}
                             </>
                           )}

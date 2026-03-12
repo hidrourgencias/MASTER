@@ -40,8 +40,8 @@ export default function Profile() {
   }, [user]);
 
   useEffect(() => {
-    if (user && !isAdmin) {
-      api.getWorkOrders().then(setWorkOrders).catch(() => {});
+    if (user) {
+      if (!isAdmin) api.getWorkOrders().then(setWorkOrders).catch(() => {});
       api.getNotifications().then(setNotifications).catch(() => {});
     }
   }, [user, isAdmin]);
@@ -200,6 +200,25 @@ export default function Profile() {
         </button>
       </form>
 
+      {/* Admin: Nuevos tickets recibidos */}
+      {isAdmin && notifications.filter((n: any) => n.type === 'TICKET_RECIBIDO').length > 0 && (
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-border-light space-y-3">
+          <h3 className="font-semibold text-sm text-corporate-blue flex items-center gap-2">
+            <Bell size={16} /> Tickets recibidos
+          </h3>
+          {notifications
+            .filter((n: any) => n.type === 'TICKET_RECIBIDO')
+            .slice(0, 10)
+            .map((n: any) => (
+              <div key={n.id} className="p-3 rounded-xl border bg-blue-50 border-blue-200">
+                <p className="font-medium text-sm text-blue-800">{n.title || 'Nuevo ticket'}</p>
+                <p className="text-xs text-text-secondary mt-0.5">{n.message}</p>
+                {n.created_at && <p className="text-xs text-text-secondary mt-1">{new Date(n.created_at).toLocaleString('es-CL')}</p>}
+              </div>
+            ))}
+        </div>
+      )}
+
       {/* Payment notifications - Technicians only */}
       {!isAdmin && notifications.filter((n: any) => n.type === 'PAGO_ASIGNADO').length > 0 && (
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-border-light space-y-3">
@@ -214,6 +233,18 @@ export default function Profile() {
                 <p className="font-medium text-sm text-green-800">{n.title || 'Pago asignado'}</p>
                 <p className="text-xs text-text-secondary mt-0.5">{n.message}</p>
                 {n.created_at && <p className="text-xs text-text-secondary mt-1">{new Date(n.created_at).toLocaleString('es-CL')}</p>}
+                {n.ref_id && (
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={async () => { try { await api.setEstadoPagoTecnico(n.ref_id, 'recepcionado'); api.getNotifications().then(setNotifications); } catch (e: any) { alert(e.message || 'Error'); } }}
+                      className="flex-1 py-2 bg-green-600 text-white rounded-lg text-sm font-medium">
+                      Recepcionado
+                    </button>
+                    <button onClick={async () => { try { await api.setEstadoPagoTecnico(n.ref_id, 'pendiente'); api.getNotifications().then(setNotifications); } catch (e: any) { alert(e.message || 'Error'); } }}
+                      className="flex-1 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium">
+                      A la espera de pago
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
         </div>
