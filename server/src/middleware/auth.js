@@ -30,3 +30,10 @@ export function adminMiddleware(req, res, next) {
   }
   next();
 }
+
+export function adminOrSupervisorMiddleware(req, res, next) {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'supervisor') {
+    return res.status(403).json({ error: 'Acceso denegado. Se requiere rol admin o supervisor.' });
+  }
+  next();
+}

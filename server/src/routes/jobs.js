@@ -6,6 +6,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import db from '../db/database.js';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
+import * as flujoCaja from '../services/flujoCaja.js';
 import { saveJobPdf } from '../utils/generateJobPdf.js';
 import { saveComprobantePdf } from '../utils/generateComprobantePdf.js';
 
@@ -124,8 +125,11 @@ router.get('/summary', async (req, res) => {
 
 function sanitizeJobForTechnician(job) {
   if (!job) return job;
-  const { amount, technician_payment, admin_payment_method, admin_payment_schedule, admin_payment_notes, ...rest } = job;
+  const { amount, admin_payment_method, admin_payment_schedule, admin_payment_notes, ...rest } = job;
   return rest;
+}
+function canSeeFinancials(role) {
+  return role === 'admin' || role === 'supervisor';
 }
 
 router.get('/:id', async (req, res) => {
@@ -141,7 +145,7 @@ router.get('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Sin permisos' });
     }
     const photos = await db.prepare('SELECT * FROM service_job_photos WHERE service_job_id = ?').all(id);
-    const out = req.user.role === 'admin' ? { ...job, photos } : { ...sanitizeJobForTechnician(job), photos };
+    const out = canSeeFinancials(req.user.role) ? { ...job, photos } : { ...sanitizeJobForTechnician(job), photos };
     res.json(out);
   } catch (err) {
     res.status(500).json({ error: 'Error' });
@@ -169,7 +173,7 @@ router.get('/', async (req, res) => {
     const withPhotos = await Promise.all(jobs.map(async (j) => {
       const photos = await db.prepare('SELECT * FROM service_job_photos WHERE service_job_id = ?').all(j.id);
       const row = { ...j, photos };
-      return req.user.role === 'admin' ? row : { ...sanitizeJobForTechnician(j), photos };
+      return canSeeFinancials(req.user.role) ? row : { ...sanitizeJobForTechnician(j), photos };
     }));
 
     res.json(withPhotos);
@@ -393,6 +397,11 @@ router.put('/:id/approve', authMiddleware, adminMiddleware, async (req, res) => 
     await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
       .run(req.user.id, 'APPROVE_JOB', `Ticket #${id} aprobado. Pago técnico: $${payAmount}`);
 
+    if (amt > 0 && !isGarantia) {
+      await flujoCaja.registrarIngresoServicio(id, amt, `${job.job_service_name || 'Servicio'} - ${job.client_name}`, req.user.id);
+      await flujoCaja.registrarEgresoPagoTecnico(id, payAmount, `Pago a técnico Ticket #${id}`, req.user.id);
+    }
+
     if (job.technician_id) {
       const label = PAYMENT_SCHEDULE_LABELS[schedule] || schedule || '';
       await sendPaymentNotification(db, job.technician_id, job, payAmount, label);
@@ -436,6 +445,9 @@ router.put('/:id/set-payment', authMiddleware, adminMiddleware, async (req, res)
 
     await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
       .run(req.user.id, 'SET_JOB_PAYMENT', `Pago técnico #${id}: $${payAmount}`);
+
+    if (payAmount > 0) await flujoCaja.registrarEgresoPagoTecnico(id, payAmount, `Pago técnico Ticket #${id}`, req.user.id);
+    if (job.amount > 0) await flujoCaja.registrarIngresoServicio(id, job.amount, `${job.job_service_name || 'Servicio'} - ${job.client_name}`, req.user.id);
 
     if (job.technician_id) {
       const label = PAYMENT_SCHEDULE_LABELS[schedule] || schedule || '';
@@ -521,6 +533,9 @@ router.put('/:id/confirmar-pago', authMiddleware, adminMiddleware, async (req, r
 
     await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
       .run(req.user.id, 'CONFIRMAR_PAGO', `Ticket #${id} - Pago registrado: $${payAmount} (${metodo})`);
+
+    if (payAmount > 0) await flujoCaja.registrarEgresoPagoTecnico(id, payAmount, `Pago técnico Ticket #${id}`, req.user.id);
+    if (job.amount > 0) await flujoCaja.registrarIngresoServicio(id, job.amount, `${job.job_service_name || 'Servicio'} - ${job.client_name}`, req.user.id);
 
     if (job.technician_id) {
       const msg = `Ticket #${id} - ${job.job_service_name || 'Servicio'} en "${job.client_name}". Monto: $${payAmount.toLocaleString('es-CL')}. Método: ${metodo}. Confirma tu recepción en la app.`;

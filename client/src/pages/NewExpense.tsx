@@ -12,9 +12,11 @@ export default function NewExpense() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  const CATEGORIAS_GASTO = ['combustible', 'mantencion_maquinaria', 'insumos', 'herramientas', 'peajes', 'alimentacion_tecnicos', 'transporte', 'otros'];
   const [form, setForm] = useState({
     date: todayISO(), amount: '', provider: '', provider_rut: '', service: '',
-    description: '', document_type: 'boleta', document_number: '', collaborators: [] as number[]
+    description: '', document_type: 'boleta', document_number: '', collaborators: [] as number[],
+    categoria_gasto: 'otros', ticket_id: '', tecnico_id: ''
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
@@ -86,7 +88,7 @@ export default function NewExpense() {
       const fd = new FormData();
       Object.entries(form).forEach(([key, val]) => {
         if (key === 'collaborators') fd.append(key, JSON.stringify(val));
-        else fd.append(key, String(val));
+        else if (val !== '' && val !== undefined) fd.append(key, String(val));
       });
       if (imageFile && !imageFilename) fd.append('receipt', imageFile);
       if (imageFilename) fd.append('image_path', imageFilename);
@@ -203,6 +205,14 @@ export default function NewExpense() {
             className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm bg-white focus:ring-2 focus:ring-corporate-light outline-none">
             <option value="">Seleccionar servicio...</option>
             {services.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-text-secondary mb-1">Categoría</label>
+          <select value={form.categoria_gasto} onChange={e => setForm(p => ({ ...p, categoria_gasto: e.target.value }))}
+            className="w-full px-3 py-2.5 rounded-xl border border-border-light text-sm bg-white focus:ring-2 focus:ring-corporate-light outline-none">
+            {CATEGORIAS_GASTO.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
           </select>
         </div>
 

@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Camera, Receipt, DollarSign, Clock, CheckCircle, Send, Briefcase, Plus } from 'lucide-react';
+import { Camera, Receipt, DollarSign, Clock, CheckCircle, Send, Briefcase, Plus, TrendingUp, TrendingDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { formatCurrency } from '../utils/format';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer } from 'recharts';
 
 export default function Dashboard() {
   const { user, isAdmin } = useAuth();
   const [jobSummary, setJobSummary] = useState<any>(null);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
+  const [dashboard, setDashboard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,12 +20,14 @@ export default function Dashboard() {
 
   async function loadData() {
     try {
-      const [s, wo] = await Promise.all([
+      const [s, wo, dash] = await Promise.all([
         api.getJobSummary().catch(() => null),
-        api.getWorkOrders ? api.getWorkOrders().catch(() => []) : Promise.resolve([])
+        api.getWorkOrders ? api.getWorkOrders().catch(() => []) : Promise.resolve([]),
+        (isAdmin || (user?.role === 'supervisor')) && api.getAdminDashboard ? api.getAdminDashboard().catch(() => null) : Promise.resolve(null)
       ]);
       setJobSummary(s);
       setWorkOrders(wo || []);
+      setDashboard(dash);
     } catch { /* ignore */ }
     setLoading(false);
   }
@@ -40,10 +44,84 @@ export default function Dashboard() {
     );
   }
 
+  const chartData = dashboard ? [
+    { name: 'Ingresos', value: dashboard.mes?.ingresos ?? 0, fill: '#10b981' },
+    { name: 'Egresos', value: dashboard.mes?.egresos ?? 0, fill: '#ef4444' },
+    { name: 'Utilidad', value: dashboard.mes?.utilidad ?? 0, fill: '#3b82f6' }
+  ] : [];
+
   return (
     <div className="p-4 space-y-4 animate-fade-in">
-      <h1 className="text-xl font-bold text-corporate-blue">Órdenes y Servicios</h1>
+      <h1 className="text-xl font-bold text-corporate-blue">Hidrourgencias ERP</h1>
       <p className="text-sm text-text-secondary">Hola, {user?.display_name}</p>
+
+      {/* Dashboard Financiero Admin / Supervisor */}
+      {(isAdmin || user?.role === 'supervisor') && dashboard && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold text-text-secondary uppercase">Indicadores del día</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="bg-white rounded-xl p-3 shadow-sm border">
+              <p className="text-xs text-text-secondary">Servicios hoy</p>
+              <p className="font-bold text-corporate-blue">{dashboard.hoy?.servicios ?? 0}</p>
+            </div>
+            <div className="bg-white rounded-xl p-3 shadow-sm border">
+              <p className="text-xs text-text-secondary">Ingresos hoy</p>
+              <p className="font-bold text-green-600">{formatCurrency(dashboard.hoy?.ingresos ?? 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl p-3 shadow-sm border">
+              <p className="text-xs text-text-secondary">Gastos hoy</p>
+              <p className="font-bold text-red-600">{formatCurrency(dashboard.hoy?.egresos ?? 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl p-3 shadow-sm border">
+              <p className="text-xs text-text-secondary">Utilidad hoy</p>
+              <p className={`font-bold ${(dashboard.hoy?.utilidad ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatCurrency(dashboard.hoy?.utilidad ?? 0)}
+              </p>
+            </div>
+          </div>
+          <h2 className="text-sm font-semibold text-text-secondary uppercase">Resumen mensual</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="bg-white rounded-xl p-3 shadow-sm border">
+              <p className="text-xs text-text-secondary">Servicios mes</p>
+              <p className="font-bold">{dashboard.mes?.servicios ?? 0}</p>
+            </div>
+            <div className="bg-white rounded-xl p-3 shadow-sm border">
+              <p className="text-xs text-text-secondary">Ingresos mes</p>
+              <p className="font-bold text-green-600">{formatCurrency(dashboard.mes?.ingresos ?? 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl p-3 shadow-sm border">
+              <p className="text-xs text-text-secondary">Egresos mes</p>
+              <p className="font-bold text-red-600">{formatCurrency(dashboard.mes?.egresos ?? 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl p-3 shadow-sm border">
+              <p className="text-xs text-text-secondary">Utilidad mes</p>
+              <p className={`font-bold flex items-center gap-1 ${(dashboard.mes?.utilidad ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatCurrency(dashboard.mes?.utilidad ?? 0)}
+                {(dashboard.crecimientoMensual ?? 0) !== 0 && (
+                  <span className={`text-xs ${dashboard.crecimientoMensual >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {dashboard.crecimientoMensual >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                    {dashboard.crecimientoMensual > 0 ? '+' : ''}{dashboard.crecimientoMensual}%
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+          {chartData.some(d => d.value > 0) && (
+            <div className="bg-white rounded-xl p-4 shadow-sm border">
+              <p className="text-xs font-medium text-text-secondary mb-2">Ingresos vs Egresos vs Utilidad (mes)</p>
+              <div className="h-32">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData}>
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                    <YAxis tick={{ fontSize: 10 }} tickFormatter={v => v >= 1000 ? `${v/1000}k` : v} />
+                    <Bar dataKey="value" radius={4} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Job Summary */}
       {jobSummary && (

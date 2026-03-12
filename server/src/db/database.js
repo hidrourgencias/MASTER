@@ -302,6 +302,50 @@ export async function initDatabase() {
   await addCol('quotes', 'payment_modalities', "TEXT DEFAULT ''");
   await addCol('quotes', 'expiration_days', "INTEGER DEFAULT 15");
 
+  // ERP: flujo de caja
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS flujo_caja (
+      id SERIAL PRIMARY KEY,
+      tipo_movimiento TEXT NOT NULL,
+      categoria TEXT DEFAULT '',
+      descripcion TEXT DEFAULT '',
+      monto NUMERIC(12,2) NOT NULL,
+      fecha TIMESTAMP DEFAULT NOW(),
+      ticket_id INTEGER REFERENCES service_jobs(id),
+      expense_id INTEGER,
+      usuario_id INTEGER REFERENCES users(id),
+      origen TEXT DEFAULT ''
+    )
+  `);
+
+  // ERP: gastos vinculados a ticket
+  await addCol('expenses', 'ticket_id', 'INTEGER REFERENCES service_jobs(id)');
+  await addCol('expenses', 'tecnico_id', 'INTEGER REFERENCES users(id)');
+  await addCol('expenses', 'categoria_gasto', "TEXT DEFAULT 'otros'");
+
+  // ERP: service_jobs - campos adicionales
+  await addCol('service_jobs', 'work_order_id', 'INTEGER REFERENCES work_orders(id)');
+  await addCol('service_jobs', 'latitud', 'NUMERIC(10,6)');
+  await addCol('service_jobs', 'longitud', 'NUMERIC(10,6)');
+  await addCol('service_jobs', 'fecha_inicio', 'TIMESTAMP');
+  await addCol('service_jobs', 'fecha_finalizacion', 'TIMESTAMP');
+  await addCol('service_jobs', 'address_number', "TEXT DEFAULT ''");
+
+  // ERP: tabla clientes
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clientes (
+      id SERIAL PRIMARY KEY,
+      nombre TEXT NOT NULL,
+      rut TEXT DEFAULT '',
+      telefono TEXT DEFAULT '',
+      email TEXT DEFAULT '',
+      direccion TEXT DEFAULT '',
+      tipo TEXT DEFAULT 'RESIDENCIAL',
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await addCol('service_jobs', 'cliente_id', 'INTEGER REFERENCES clientes(id)');
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS equipment_catalog (
       id SERIAL PRIMARY KEY,

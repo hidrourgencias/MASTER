@@ -2,10 +2,56 @@ import { Router } from 'express';
 import XLSX from 'xlsx';
 import db from '../db/database.js';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
+import * as flujoCaja from '../services/flujoCaja.js';
 
 const router = Router();
 router.use(authMiddleware);
 router.use(adminMiddleware);
+
+router.get('/dashboard', async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const firstDayMonth = today.slice(0, 7) + '-01';
+    const lastDayMonth = new Date(new Date(today).getFullYear(), new Date(today).getMonth() + 1, 0).toISOString().slice(0, 10);
+    const firstDayPrev = new Date(new Date(today).getFullYear(), new Date(today).getMonth() - 1, 1).toISOString().slice(0, 10);
+    const lastDayPrev = new Date(new Date(today).getFullYear(), new Date(today).getMonth(), 0).toISOString().slice(0, 10);
+
+    const [hoy, mesActual, mesAnterior] = await Promise.all([
+      flujoCaja.obtenerTotalesPorPeriodo(today, today),
+      flujoCaja.obtenerTotalesPorPeriodo(firstDayMonth, lastDayMonth),
+      flujoCaja.obtenerTotalesPorPeriodo(firstDayPrev, lastDayPrev)
+    ]);
+
+    const serviciosHoy = await db.prepare(`
+      SELECT COUNT(*) as count FROM service_jobs WHERE date = ? AND (is_garantia IS NULL OR is_garantia = 0)
+    `).get(today);
+    const serviciosMes = await db.prepare(`
+      SELECT COUNT(*) as count FROM service_jobs WHERE date >= ? AND date <= ? AND (is_garantia IS NULL OR is_garantia = 0)
+    `).get(firstDayMonth, lastDayMonth);
+
+    const ingresoPrev = mesAnterior.ingresos || 0;
+    const crecimiento = ingresoPrev > 0 ? ((mesActual.ingresos - ingresoPrev) / ingresoPrev) * 100 : 0;
+
+    res.json({
+      hoy: {
+        servicios: serviciosHoy?.count ?? 0,
+        ingresos: hoy.ingresos,
+        egresos: hoy.egresos,
+        utilidad: hoy.utilidad
+      },
+      mes: {
+        servicios: serviciosMes?.count ?? 0,
+        ingresos: mesActual.ingresos,
+        egresos: mesActual.egresos,
+        utilidad: mesActual.utilidad
+      },
+      crecimientoMensual: Math.round(crecimiento * 100) / 100
+    });
+  } catch (err) {
+    console.error('Dashboard error:', err);
+    res.status(500).json({ error: 'Error al obtener dashboard' });
+  }
+});
 
 router.get('/audit-log', async (req, res) => {
   try {
@@ -146,6 +192,80 @@ router.get('/export-contable', async (req, res) => {
   } catch (err) {
     console.error('Export contable error:', err);
     res.status(500).json({ error: 'Error al exportar planilla contable' });
+  }
+});
+
+router.get('/export-erp', async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const fromDate = from || new Date().toISOString().slice(0, 7) + '-01';
+    const toDate = to || new Date().toISOString().slice(0, 10);
+
+    const jobParams = [];
+    let jobWhere = '(j.is_garantia IS NULL OR j.is_garantia = 0) AND j.amount > 0';
+    if (fromDate) { jobWhere += ' AND j.date >= ?'; jobParams.push(fromDate); }
+    if (toDate) { jobWhere += ' AND j.date <= ?'; jobParams.push(toDate); }
+
+    const ingresosRows = await db.prepare(`
+      SELECT j.id, j.date as Fecha, j.client_name as Cliente, js.name as Servicio,
+        j.amount as Monto_Servicio, j.admin_payment_method as Metodo_Pago
+      FROM service_jobs j
+      LEFT JOIN job_services js ON j.job_service_id = js.id
+      WHERE ${jobWhere}
+      ORDER BY j.date ASC
+    `).all(...jobParams);
+
+    const pagParams = []; let pagWhere = 'j.technician_payment > 0';
+    if (fromDate) { pagWhere += ' AND j.date >= ?'; pagParams.push(fromDate); }
+    if (toDate) { pagWhere += ' AND j.date <= ?'; pagParams.push(toDate); }
+    const pagosRows = await db.prepare(`
+      SELECT j.id as Ticket_ID, j.date as Fecha, u.display_name as Tecnico,
+        j.technician_payment as Monto_Pagado, j.admin_payment_method as Metodo_Pago,
+        CASE WHEN j.technician_paid = 1 THEN 'Recepcionado' ELSE 'Pendiente' END as Estado_Pago
+      FROM service_jobs j JOIN users u ON j.technician_id = u.id
+      WHERE ${pagWhere}
+      ORDER BY j.date ASC
+    `).all(...pagParams);
+
+    const expParams = []; let expWhere = "e.status IN ('aprobado','pagado')";
+    if (fromDate) { expWhere += ' AND e.date >= ?'; expParams.push(fromDate); }
+    if (toDate) { expWhere += ' AND e.date <= ?'; expParams.push(toDate); }
+    const gastosRows = await db.prepare(`
+      SELECT e.id, e.date as Fecha, COALESCE(e.categoria_gasto, 'otros') as Categoria,
+        e.description as Descripcion, e.amount as Monto, e.provider as Proveedor,
+        u.display_name as Usuario_Registro
+      FROM expenses e JOIN users u ON e.user_id = u.id
+      WHERE ${expWhere}
+      ORDER BY e.date ASC
+    `).all(...expParams);
+
+    const flujoRows = await flujoCaja.obtenerFlujoCaja(fromDate, toDate);
+
+    const totalIngresos = (ingresosRows || []).reduce((s, r) => s + (Number(r.Monto_Servicio) || 0), 0);
+    const totalPagos = (pagosRows || []).reduce((s, r) => s + (Number(r.Monto_Pagado) || 0), 0);
+    const totalGastos = (gastosRows || []).reduce((s, r) => s + (Number(r.Monto) || 0), 0);
+    const resumenData = [
+      ['Concepto', 'Monto'],
+      ['Ingresos totales', totalIngresos],
+      ['Pagos a técnicos', totalPagos],
+      ['Gastos operativos', totalGastos],
+      ['Utilidad neta', totalIngresos - totalPagos - totalGastos]
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ingresosRows), 'Ingresos');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pagosRows), 'Pagos tecnicos');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(gastosRows), 'Gastos operativos');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flujoRows), 'Flujo de caja');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumenData), 'Resumen financiero');
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=erp_hidrourgencias_${new Date().toISOString().split('T')[0]}.xlsx`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('Export ERP error:', err);
+    res.status(500).json({ error: 'Error al exportar reporte ERP' });
   }
 });
 

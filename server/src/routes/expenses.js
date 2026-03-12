@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import db from '../db/database.js';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
+import * as flujoCaja from '../services/flujoCaja.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -117,7 +118,7 @@ router.get('/stats', authMiddleware, adminMiddleware, async (req, res) => {
 
 router.post('/', upload.single('receipt'), async (req, res) => {
   try {
-    const { date, amount, provider, provider_rut, service, description, document_type, document_number, collaborators, ocr_raw } = req.body;
+    const { date, amount, provider, provider_rut, service, description, document_type, document_number, collaborators, ocr_raw, ticket_id, tecnico_id, categoria_gasto } = req.body;
 
     if (!date || !amount) {
       return res.status(400).json({ error: 'Fecha y monto son requeridos' });
@@ -125,10 +126,11 @@ router.post('/', upload.single('receipt'), async (req, res) => {
 
     const imagePath = req.file ? req.file.filename : '';
     const collabs = collaborators || '[]';
+    const cat = categoria_gasto || 'otros';
 
     const result = await db.prepare(`
-      INSERT INTO expenses (user_id, date, amount, provider, provider_rut, service, description, document_type, document_number, image_path, collaborators, ocr_raw)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+      INSERT INTO expenses (user_id, date, amount, provider, provider_rut, service, description, document_type, document_number, image_path, collaborators, ocr_raw, ticket_id, tecnico_id, categoria_gasto)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
     `).run(
       req.user.id,
       date,
@@ -141,7 +143,10 @@ router.post('/', upload.single('receipt'), async (req, res) => {
       document_number || '',
       imagePath,
       collabs,
-      ocr_raw || ''
+      ocr_raw || '',
+      ticket_id ? parseInt(ticket_id, 10) : null,
+      tecnico_id ? parseInt(tecnico_id, 10) : null,
+      cat
     );
 
     if (provider_rut && provider) {
@@ -173,9 +178,14 @@ router.put('/:id/approve', authMiddleware, adminMiddleware, async (req, res) => 
       return res.status(400).json({ error: 'Estado inválido' });
     }
 
+    const exp = await db.prepare('SELECT * FROM expenses WHERE id = ?').get(id);
     await db.prepare(`
       UPDATE expenses SET status = ?, approved_by = ?, approved_at = NOW(), updated_at = NOW() WHERE id = ?
     `).run(status, req.user.id, id);
+
+    if (status === 'aprobado' && exp) {
+      await flujoCaja.registrarEgresoGasto(id, exp.amount, exp.categoria_gasto || 'otros', `${exp.provider || 'Gasto'} - ${exp.service || ''}`, exp.ticket_id, req.user.id);
+    }
 
     await db.prepare('INSERT INTO audit_log (user_id, action, details) VALUES (?, ?, ?)')
       .run(req.user.id, 'APPROVE_EXPENSE', `Gasto #${id} ${status}`);

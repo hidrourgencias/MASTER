@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { initDatabase } from './db/database.js';
 import db from './db/database.js';
 import authRoutes from './routes/auth.js';
+import { authMiddleware, adminOrSupervisorMiddleware } from './middleware/auth.js';
 import expenseRoutes from './routes/expenses.js';
 import userRoutes from './routes/users.js';
 import ocrRoutes from './routes/ocr.js';
@@ -39,6 +40,35 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/ocr', ocrRoutes);
 app.use('/api/admin', adminRoutes);
+
+// Dashboard ERP - accesible por admin y supervisor
+app.get('/api/dashboard', authMiddleware, adminOrSupervisorMiddleware, async (req, res) => {
+  try {
+    const flujoCaja = await import('./services/flujoCaja.js');
+    const today = new Date().toISOString().slice(0, 10);
+    const firstDayMonth = today.slice(0, 7) + '-01';
+    const lastDayMonth = new Date(new Date(today).getFullYear(), new Date(today).getMonth() + 1, 0).toISOString().slice(0, 10);
+    const firstDayPrev = new Date(new Date(today).getFullYear(), new Date(today).getMonth() - 1, 1).toISOString().slice(0, 10);
+    const lastDayPrev = new Date(new Date(today).getFullYear(), new Date(today).getMonth(), 0).toISOString().slice(0, 10);
+    const [hoy, mesActual, mesAnterior] = await Promise.all([
+      flujoCaja.obtenerTotalesPorPeriodo(today, today),
+      flujoCaja.obtenerTotalesPorPeriodo(firstDayMonth, lastDayMonth),
+      flujoCaja.obtenerTotalesPorPeriodo(firstDayPrev, lastDayPrev)
+    ]);
+    const serviciosHoy = await db.prepare('SELECT COUNT(*) as count FROM service_jobs WHERE date = ? AND (is_garantia IS NULL OR is_garantia = 0)').get(today);
+    const serviciosMes = await db.prepare('SELECT COUNT(*) as count FROM service_jobs WHERE date >= ? AND date <= ? AND (is_garantia IS NULL OR is_garantia = 0)').get(firstDayMonth, lastDayMonth);
+    const ingresoPrev = mesAnterior.ingresos || 0;
+    const crecimiento = ingresoPrev > 0 ? ((mesActual.ingresos - ingresoPrev) / ingresoPrev) * 100 : 0;
+    res.json({
+      hoy: { servicios: serviciosHoy?.count ?? 0, ingresos: hoy.ingresos, egresos: hoy.egresos, utilidad: hoy.utilidad },
+      mes: { servicios: serviciosMes?.count ?? 0, ingresos: mesActual.ingresos, egresos: mesActual.egresos, utilidad: mesActual.utilidad },
+      crecimientoMensual: Math.round(crecimiento * 100) / 100
+    });
+  } catch (err) {
+    console.error('Dashboard error:', err);
+    res.status(500).json({ error: 'Error al obtener dashboard' });
+  }
+});
 
 // Confirmar/rechazar orden vía WhatsApp (enlace seguro con token)
 app.get('/api/public/orden-confirmar', async (req, res) => {

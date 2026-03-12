@@ -110,6 +110,7 @@ export const api = {
   deleteService: (id: number) =>
     request<any>(`/admin/services/${id}`, { method: 'DELETE' }),
 
+  getAdminDashboard: () => request<any>('/dashboard'),
   getAuditLog: () => request<any[]>('/admin/audit-log'),
   getSettings: () => request<any>('/admin/settings'),
   updateSettings: (data: any) =>
@@ -234,6 +235,22 @@ export const api = {
     URL.revokeObjectURL(url);
   },
 
+  exportErpExcel: async (params: Record<string, string> = {}) => {
+    const token = getToken();
+    const query = new URLSearchParams(params).toString();
+    const baseOrigin = getServerOrigin();
+    const res = await fetch(`${baseOrigin}/api/admin/export-erp?${query}`, {
+      headers: { Authorization: `Bearer ${token}` } as any
+    });
+    if (!res.ok) throw new Error('Error al exportar');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `erp_hidrourgencias_${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
   exportContableExcel: async (params: Record<string, string> = {}) => {
     const token = getToken();
     const query = new URLSearchParams(params).toString();
