@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Receipt, BarChart3, Shield, User, Users, Menu, X, LogOut, Settings, FileText, Phone, Wrench, Briefcase, DollarSign, ClipboardList, Send, FileSignature, ClipboardCheck, FileDown } from 'lucide-react';
+import { Home, Receipt, BarChart3, Shield, User, Users, Menu, X, LogOut, Settings, FileText, Phone, Wrench, Briefcase, DollarSign, ClipboardList, Send, FileSignature, ClipboardCheck, FileDown, BookOpen, FileStack, Archive } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-type AppModule = 'gastos' | 'ordenes' | 'ventas';
+type AppModule = 'gastos' | 'ordenes' | 'ventas' | 'conocimiento';
 
 function getActiveModule(pathname: string, isVentas: boolean): AppModule {
+  if (pathname.startsWith('/bitacora') || pathname.startsWith('/biblioteca') || pathname.startsWith('/ticket-library')) return 'conocimiento';
   if (pathname.startsWith('/cotizaciones')) return 'ventas';
   if (pathname.startsWith('/gastos') || pathname.startsWith('/reportes')) return 'gastos';
   if (pathname === '/admin' || pathname.startsWith('/admin/servicios') || pathname.startsWith('/admin/configuracion')) return 'gastos';
@@ -42,12 +43,19 @@ export default function Layout() {
     { to: '/cotizaciones', icon: FileSignature, label: 'Cotizaciones' },
   ];
 
+  const conocimientoNavItems = [
+    { to: '/bitacora', icon: BookOpen, label: 'Bitácora' },
+    { to: '/biblioteca', icon: FileStack, label: 'Biblioteca' },
+    { to: '/ticket-library', icon: Archive, label: 'Tickets' },
+  ];
+
   let navItems = ordenesNavItems;
   if (activeModule === 'gastos') navItems = gastosNavItems;
   if (activeModule === 'ventas') navItems = ventasNavItems;
+  if (activeModule === 'conocimiento') navItems = conocimientoNavItems;
 
   return (
-    <div className="min-h-[100dvh] min-h-screen bg-bg-main flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+    <div className="h-[100dvh] max-h-[100dvh] overflow-hidden bg-bg-main flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {/* Module Tabs - compactos en móvil */}
       <div className="bg-white border-b border-border-light flex overflow-x-auto no-scrollbar shrink-0 flex-shrink-0">
         <button
@@ -63,13 +71,19 @@ export default function Layout() {
           Órdenes
         </button>
         {isVentas && (
-          <button
-            onClick={() => navigate('/cotizaciones')}
-            className={`px-3 py-2 sm:px-4 sm:py-3 whitespace-nowrap text-xs sm:text-sm font-semibold transition shrink-0 ${activeModule === 'ventas' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
-          >
-            Ventas
-          </button>
+<button
+          onClick={() => navigate('/cotizaciones')}
+          className={`px-3 py-2 sm:px-4 sm:py-3 whitespace-nowrap text-xs sm:text-sm font-semibold transition shrink-0 ${activeModule === 'ventas' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
+        >
+          Ventas
+        </button>
         )}
+        <button
+          onClick={() => navigate('/bitacora')}
+          className={`px-3 py-2 sm:px-4 sm:py-3 whitespace-nowrap text-xs sm:text-sm font-semibold transition shrink-0 ${activeModule === 'conocimiento' ? 'text-corporate-blue border-b-2 border-corporate-blue bg-blue-50/50' : 'text-text-secondary hover:bg-gray-50'}`}
+        >
+          Conocimiento
+        </button>
       </div>
 
       {/* Header */}
@@ -79,7 +93,7 @@ export default function Layout() {
         </button>
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-corporate-light rounded-lg flex items-center justify-center font-bold text-xs">H</div>
-          <span className="font-semibold text-sm">Hidrourgencias v2</span>
+          <span className="font-semibold text-sm">Hidrourgencias ERP</span>
         </div>
         <div className="text-xs opacity-80 truncate max-w-[80px]">{user?.display_name}</div>
       </header>
@@ -120,6 +134,7 @@ export default function Layout() {
 
                 <p className="px-5 py-2 text-xs font-semibold text-text-secondary uppercase mt-4">Órdenes y Servicios</p>
                 <DrawerLink to="/" icon={Home} label="Inicio" onClick={() => setDrawerOpen(false)} />
+                <DrawerLink to="/" icon={ClipboardCheck} label="Recepción de órdenes" onClick={() => setDrawerOpen(false)} />
                 <DrawerLink to="/servicios" icon={Briefcase} label="Mis Servicios" onClick={() => setDrawerOpen(false)} />
                 {!isAdmin && <DrawerLink to="/liquidaciones" icon={FileDown} label="Mis Liquidaciones" onClick={() => setDrawerOpen(false)} />}
                 {isAdmin && (
@@ -133,6 +148,15 @@ export default function Layout() {
                     <DrawerLink to="/admin/servicios" icon={ClipboardList} label="Servicios (Gastos)" onClick={() => setDrawerOpen(false)} />
                     <DrawerLink to="/admin/configuracion" icon={Settings} label="Configuración" onClick={() => setDrawerOpen(false)} />
                     <DrawerLink to="/admin/auditoria" icon={ClipboardCheck} label="Auditoría" onClick={() => setDrawerOpen(false)} />
+                  </>
+                )}
+                {(['admin', 'tecnico', 'supervisor'].includes(user?.role || '')) && (
+                  <>
+                    <p className="px-5 py-2 text-xs font-semibold text-text-secondary uppercase mt-4">Conocimiento Técnico</p>
+                    <DrawerLink to="/bitacora" icon={BookOpen} label="Bitácora de Terreno" onClick={() => setDrawerOpen(false)} />
+                    <DrawerLink to="/biblioteca" icon={FileStack} label="Biblioteca Técnica" onClick={() => setDrawerOpen(false)} />
+                    <DrawerLink to="/ticket-library" icon={Archive} label="Biblioteca de Tickets" onClick={() => setDrawerOpen(false)} />
+                    {isAdmin && <DrawerLink to="/biblioteca/subir" icon={FileText} label="Subir documento" onClick={() => setDrawerOpen(false)} />}
                   </>
                 )}
                 <DrawerLink to="/perfil" icon={User} label="Perfil" onClick={() => setDrawerOpen(false)} />
@@ -149,7 +173,7 @@ export default function Layout() {
       </AnimatePresence>
 
       {/* Content - espacio extra para barra inferior y safe-area */}
-      <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pb-[calc(4rem+env(safe-area-inset-bottom,0px))]">
+      <main className="layout-content flex-1 min-h-0 overflow-y-auto overflow-x-hidden pb-[calc(4rem+env(safe-area-inset-bottom,0px))]">
         <Outlet />
       </main>
 
